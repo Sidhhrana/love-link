@@ -1,0 +1,259 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#4aa3ff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Love Link" />
+  <title>Love Link</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="bg-layer"></div>
+  <div class="shell">
+    <section id="authScreen" class="auth liquid-card stack">
+      <div class="title-wrap">
+        <div class="app-mark">LL</div>
+        <div>
+          <h1>Love Link</h1>
+          <p class="small">Private long-distance space with realtime sync and premium controls.</p>
+        </div>
+      </div>
+      <div class="row two">
+        <select id="roleInput">
+          <option value="guy">Guy Theme (Blue)</option>
+          <option value="girl">Girl Theme (Pink)</option>
+        </select>
+        <input id="nameInput" placeholder="Your display name" maxlength="20" />
+      </div>
+      <input id="pairCodeInput" placeholder="Couple pair code" />
+      <button id="loginBtn" class="btn primary">Enter App</button>
+      <button id="demoBtn" class="btn ghost">Quick Demo Login</button>
+      <p class="hint">Realtime uses your integrated Firebase project.</p>
+    </section>
+
+    <main id="appRoot" class="hidden">
+      <header class="topbar liquid-card">
+        <div class="brand">
+          <div class="app-mark small">LL</div>
+          <span id="brandTitle">Love Link</span>
+        </div>
+        <div class="top-actions">
+          <span id="syncBadge" class="badge">Offline</span>
+          <button id="installBtn" class="btn ghost hidden">Install</button>
+        </div>
+      </header>
+
+      <section id="home" class="screen active">
+        <article class="hero liquid-card">
+          <h2>Miss Signal</h2>
+          <p class="small">One tap sends a realtime signal and a full-screen alert to your partner.</p>
+          <button id="missBtn" class="btn miss-btn">I MISS YOU</button>
+          <div class="row two">
+            <button id="shareMissBtn" class="btn ghost">Share Link Signal</button>
+            <button id="vibePingBtn" class="btn ghost">Send Vibe Ping</button>
+          </div>
+          <p id="missStatus" class="status"></p>
+        </article>
+
+        <div class="cards">
+          <article class="liquid-card card mood-card">
+            <div class="card-head">
+              <h3>Mood Sync</h3>
+              <span id="moodLabel" class="chip">Balanced</span>
+            </div>
+            <div class="partner-ring" id="partnerRing">
+              <div id="partnerAvatar" class="avatar">P</div>
+            </div>
+            <p class="small">Energy</p>
+            <input id="energySlider" class="ios-slider" type="range" min="0" max="100" value="50" />
+            <p class="small">Affection</p>
+            <input id="affectionSlider" class="ios-slider" type="range" min="0" max="100" value="70" />
+            <p id="moodText" class="small">Balanced and warm</p>
+          </article>
+
+          <article class="liquid-card card">
+            <h3>Relationship Streak</h3>
+            <p class="small">Days together</p>
+            <h2 id="daysTogether">0</h2>
+            <p id="sinceText" class="small"></p>
+          </article>
+
+          <article class="liquid-card card">
+            <h3>Daily Check-In</h3>
+            <input id="dailyPrompt" placeholder="A note for your partner" maxlength="140" />
+            <button id="savePromptBtn" class="btn primary">Save Note</button>
+            <p id="promptSaved" class="hint"></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="songs" class="screen">
+        <article class="liquid-card card stack songs-hero">
+          <h2>Our Soundtrack</h2>
+          <p class="small">Your shared playlist, always ready.</p>
+          <iframe id="spotifyFrame" style="border-radius:16px" src="https://open.spotify.com/embed/playlist/6xqr5eKiT53i18ZEjJhCfY?utm_source=generator" width="100%" height="352" frameBorder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+          <div class="row two">
+            <input id="songTitle" placeholder="Song title" />
+            <input id="songUrl" placeholder="Spotify/YouTube URL" />
+          </div>
+          <div class="row two">
+            <button id="addSongBtn" class="btn primary">Add Song</button>
+            <a class="btn ghost" href="https://open.spotify.com/playlist/6xqr5eKiT53i18ZEjJhCfY?si=c11fe2668a994cc8" target="_blank" rel="noopener">Open Playlist</a>
+          </div>
+          <div id="songsList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="goals" class="screen">
+        <article class="liquid-card card stack">
+          <h2>Our Goals</h2>
+          <div class="row two">
+            <input id="goalText" placeholder="Goal (trip, habit, plan...)" />
+            <input id="goalDate" type="date" />
+          </div>
+          <button id="addGoalBtn" class="btn primary">Add Goal</button>
+          <div id="goalsList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="dates" class="screen">
+        <article class="liquid-card card stack">
+          <h2>Important Dates</h2>
+          <div class="row two">
+            <input id="dateTitle" placeholder="Event title" />
+            <input id="dateValue" type="date" />
+          </div>
+          <button id="addDateBtn" class="btn primary">Add Date</button>
+          <div id="calendarTitle" class="small"></div>
+          <div id="calendarGrid" class="calendar-grid"></div>
+          <div id="datesList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="letters" class="screen">
+        <article class="liquid-card card stack">
+          <h2>Open-When Letters</h2>
+          <input id="letterTitle" placeholder="Open when..." />
+          <textarea id="letterBody" placeholder="Write your message"></textarea>
+          <div class="row two">
+            <select id="letterLockType">
+              <option value="mood">Unlock by mood state</option>
+              <option value="time">Unlock by date/time</option>
+            </select>
+            <input id="letterLockValue" type="datetime-local" />
+          </div>
+          <button id="addLetterBtn" class="btn primary">Save Letter</button>
+          <div id="lettersList" class="list"></div>
+        </article>
+      </section>
+
+      <section id="settings" class="screen">
+        <article class="liquid-card card stack">
+          <h2>Settings</h2>
+          <div class="row two">
+            <input id="annivInput" type="date" />
+            <input id="partnerNameInput" placeholder="Partner name" />
+          </div>
+
+          <div class="row three">
+            <label class="ios-toggle"><input id="focusToggle" type="checkbox" /><span></span>Focus</label>
+            <label class="ios-toggle"><input id="hapticToggle" type="checkbox" /><span></span>Haptics</label>
+            <label class="ios-toggle"><input id="soundToggle" type="checkbox" /><span></span>Sound</label>
+          </div>
+
+          <div class="row two">
+            <label class="control">Glass Blur <input id="blurInput" class="ios-slider" type="range" min="8" max="30" step="1" /></label>
+            <label class="control">Motion <input id="motionInput" class="ios-slider" type="range" min="0" max="1" step="0.1" /></label>
+          </div>
+
+          <div class="row two">
+            <label class="control">Corner Radius <input id="radiusInput" class="ios-slider" type="range" min="14" max="32" step="1" /></label>
+            <label class="control">UI Scale <input id="scaleInput" class="ios-slider" type="range" min="0.92" max="1.06" step="0.01" /></label>
+          </div>
+
+          <div class="row two">
+            <button id="saveSettingsBtn" class="btn primary">Save Settings</button>
+            <button id="requestNotifBtn" class="btn ghost">Enable Notifications</button>
+          </div>
+
+          <div class="row two">
+            <input id="adminCodeInput" placeholder="Admin code" />
+            <button id="adminOpenBtn" class="btn ghost">Open Admin</button>
+          </div>
+          <p class="hint">Default admin code: <code>lovelink-admin</code></p>
+          <button id="logoutBtn" class="btn ghost">Logout</button>
+        </article>
+
+        <article id="adminPanel" class="liquid-card card stack hidden">
+          <h2>Admin Panel</h2>
+          <div class="row two">
+            <input id="newPairCode" placeholder="Generate pair code (blank=auto)" />
+            <button id="genPairCodeBtn" class="btn primary">Generate Pair Code</button>
+          </div>
+
+          <div class="row two">
+            <input id="newAdminCode" placeholder="New admin code" />
+            <button id="saveAdminCodeBtn" class="btn ghost">Update Admin Code</button>
+          </div>
+
+          <div class="row two">
+            <select id="themeOverride">
+              <option value="auto">Theme: Auto (Role based)</option>
+              <option value="guy">Force Guy Blue</option>
+              <option value="girl">Force Girl Pink</option>
+            </select>
+            <button id="applyThemeBtn" class="btn ghost">Apply Theme</button>
+          </div>
+
+          <h3>Realtime Sync</h3>
+          <textarea id="firebaseConfigInput" placeholder="Firebase config JSON (optional; integrated by default)"></textarea>
+          <div class="row two">
+            <button id="saveFirebaseBtn" class="btn primary">Save Config</button>
+            <button id="connectRealtimeBtn" class="btn ghost">Connect Realtime</button>
+          </div>
+          <p id="syncStatusText" class="hint">Not connected</p>
+
+          <h3>Mini Game: Keep The Ball Up</h3>
+          <canvas id="miniGame" width="640" height="260" class="game-canvas"></canvas>
+          <div class="row two">
+            <button id="startGameBtn" class="btn primary">Start Game</button>
+            <div class="pill"><span>Best Score</span><strong id="myBestScore">0</strong></div>
+          </div>
+          <div id="scoreBoard" class="list"></div>
+
+          <h3>Connection Pulse</h3>
+          <div id="pulseList" class="list"></div>
+
+          <h3>Monitoring</h3>
+          <div id="monitorList" class="list"></div>
+        </article>
+      </section>
+
+      <nav id="navTabs" class="nav liquid-card">
+        <button data-tab="home" class="active">Home</button>
+        <button data-tab="songs">Music</button>
+        <button data-tab="goals">Goals</button>
+        <button data-tab="dates">Dates</button>
+        <button data-tab="letters">Letters</button>
+        <button data-tab="settings">Settings</button>
+      </nav>
+    </main>
+  </div>
+
+  <div id="signalOverlay" class="signal-overlay hidden">
+    <div class="signal-card liquid-card">
+      <h2 id="signalTitle">Your person misses you</h2>
+      <p id="signalBody" class="small">Open Love Link</p>
+      <button id="closeSignalBtn" class="btn primary">Open</button>
+    </div>
+  </div>
+
+  <div id="toastHost" class="toast-host"></div>
+  <script src="./app.js"></script>
+</body>
+</html>
