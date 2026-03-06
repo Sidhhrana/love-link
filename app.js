@@ -447,7 +447,7 @@ function sendMiss() {
   els.missStatus.textContent = `Signal sent at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   pulse(`${state.auth.name} sent a miss signal`);
   emitEvent('miss_signal', { at: now.toISOString() });
-  pushDeviceAlert(`${state.auth.name} misses you`, `Pair ${state.auth.pairCode}`);
+
   maybeVibrate([24, 42, 24]);
   maybeBeep();
 }
@@ -781,7 +781,8 @@ async function connectRealtime() {
 
     disconnectRealtimeListeners();
 
-    syncRuntime.eventListener = syncRuntime.roomRef.child('events').limitToLast(100).on('child_added', (snap) => {
+    const eventCutoff = Math.max(Number(state.sync.lastEventAt || 0), Date.now() - 15000);
+    syncRuntime.eventListener = syncRuntime.roomRef.child('events').orderByChild('ts').startAt(eventCutoff).limitToLast(100).on('child_added', (snap) => {
       const ev = snap.val();
       const id = snap.key;
       if (!ev || syncRuntime.seenEventIds.has(id)) return;
@@ -1046,6 +1047,11 @@ function bindDelete(container, arr, rerender, eventType, confirmMessage = '') {
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function escapeHtml(str) { return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
+
+
+
+
+
 
 
 
