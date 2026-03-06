@@ -1,5 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
+const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
 const FIREBASE_DEFAULT_CONFIG = {
   apiKey: 'AIzaSyBGrgGAY6wGe5CDFofVLgZ2Rj0QbD_K-gM',
@@ -16,6 +17,7 @@ const defaultState = {
   settings: { anniversary: '', adminCode: 'lovelink-admin', themeOverride: 'auto', notifications: false },
   preferences: { focusMode: false, haptics: true, soundCue: false, blur: 18, motion: 1, radius: 24, scale: 1 },
   sync: { firebaseConfig: '', enabled: true, connected: false, lastEventAt: 0 },
+  push: { token: '' },
   songs: [{ id: 'spotify-main', title: 'Our Spotify Playlist', url: 'https://open.spotify.com/playlist/6xqr5eKiT53i18ZEjJhCfY?si=c11fe2668a994cc8' }],
   goals: [],
   dates: [],
@@ -41,7 +43,8 @@ const syncRuntime = {
   stateListener: null,
   publishTimer: null,
   lastRemoteStateTs: 0,
-  seenEventIds: new Set()
+  seenEventIds: new Set(),
+  heartbeatTimer: 0
 };
 
 const gameRuntime = {
@@ -92,6 +95,13 @@ paintFromState();
 handleMissQuery();
 saveState(false);
 if (state.auth.loggedIn && state.sync.enabled) connectRealtime();
+
+window.addEventListener('online', () => { if (state.auth.loggedIn && state.sync.enabled && !syncRuntime.connected) connectRealtime(); });
+document.addEventListener('visibilitychange', () => {
+  if (!state.auth.loggedIn || !state.sync.enabled) return;
+  if (!document.hidden && !syncRuntime.connected) connectRealtime();
+  if (!document.hidden && syncRuntime.connected) publishPresence();
+});
 
 function byId(id) { return document.getElementById(id); }
 
@@ -272,6 +282,7 @@ function bindMain() {
     const p = await Notification.requestPermission();
     state.settings.notifications = p === 'granted';
     saveState(false);
+    if (p === 'granted') await enableBackgroundAlerts();
     toast(`Notification: ${p}`);
   });
 
@@ -542,7 +553,7 @@ function renderLetters() {
     l.opened = true;
     saveState(false);
   }));
-  bindDelete(els.lettersList, state.letters, renderLetters, 'letter_delete');
+  bindDelete(els.lettersList, state.letters, renderLetters, 'letter_delete', 'Delete this letter?');
 }
 
 function isLetterUnlocked(letter) {
@@ -710,7 +721,8 @@ function bindGameInput() {
 function schedulePublishState() {
   if (!syncRuntime.connected || !syncRuntime.roomRef || !syncRuntime.authUid) return;
   clearTimeout(syncRuntime.publishTimer);
-  syncRuntime.publishTimer = setTimeout(publishState, 260);
+  const delay = document.hidden ? 650 : 140;
+  syncRuntime.publishTimer = setTimeout(publishState, delay);
 }
 
 function publishState() {
@@ -726,6 +738,7 @@ function publishState() {
       letters: state.letters,
       mood: state.mood,
       dailyNote: state.dailyNote,
+      missLog: state.missLog,
       game: state.game,
       settings: { anniversary: state.settings.anniversary },
       auth: { partnerName: state.auth.partnerName }
@@ -737,7 +750,14 @@ function publishState() {
 function emitEvent(type, payload = {}) {
   pulse(`${state.auth.name} ${type.replace('_', ' ')}`);
   if (!syncRuntime.connected || !syncRuntime.roomRef || !syncRuntime.authUid) return;
-  syncRuntime.roomRef.child('events').push({ type, payload, ts: Date.now(), sender: syncRuntime.authUid, senderName: state.auth.name, clientId: tabId }).catch(() => {});
+  syncRuntime.roomRef.child('events').push({
+    type,
+    payload,
+    ts: Date.now(),
+    sender: syncRuntime.authUid,
+    senderName: state.auth.name,
+    clientId: tabId
+  }).catch(() => {});
 }
 
 async function connectRealtime() {
@@ -747,6 +767,7 @@ async function connectRealtime() {
     const cfg = parseFirebaseConfig();
     await loadFirebaseSDK();
     if (!window.firebase?.apps?.length) window.firebase.initializeApp(cfg);
+
     const auth = window.firebase.auth();
     if (!auth.currentUser) await auth.signInAnonymously();
     syncRuntime.authUid = auth.currentUser?.uid || '';
@@ -756,10 +777,13 @@ async function connectRealtime() {
     const room = state.auth.pairCode.replace(/[^a-zA-Z0-9_-]/g, '_');
     syncRuntime.roomRef = syncRuntime.db.ref(`rooms/${room}`);
     await syncRuntime.db.ref(`roomMembers/${room}/${syncRuntime.authUid}`).set(true);
+    if (state.push.token) await registerPushToken(state.push.token);
 
     disconnectRealtimeListeners();
+
     syncRuntime.eventListener = syncRuntime.roomRef.child('events').limitToLast(100).on('child_added', (snap) => {
-      const ev = snap.val(); const id = snap.key;
+      const ev = snap.val();
+      const id = snap.key;
       if (!ev || syncRuntime.seenEventIds.has(id)) return;
       syncRuntime.seenEventIds.add(id);
       if (ev.clientId === tabId) return;
@@ -782,6 +806,9 @@ async function connectRealtime() {
     renderMonitoring();
     toast('Realtime connected');
     pulse('Realtime connected');
+    publishPresence();
+    startHeartbeat();
+    await enableBackgroundAlerts();
     publishState();
   } catch (err) {
     syncRuntime.connected = false;
@@ -799,11 +826,15 @@ function applyRemoteState(data) {
   state.letters = data.letters || state.letters;
   state.mood = data.mood || state.mood;
   state.dailyNote = data.dailyNote ?? state.dailyNote;
+  state.missLog = data.missLog || state.missLog;
   state.game = data.game || state.game;
   state.settings.anniversary = data.settings?.anniversary ?? state.settings.anniversary;
   state.auth.partnerName = data.auth?.partnerName ?? state.auth.partnerName;
+
   saveState(false);
+
   renderHomeBits();
+  if (document.activeElement !== els.dailyPrompt) els.dailyPrompt.value = state.dailyNote || '';
   renderSongs();
   renderGoals();
   renderDates();
@@ -811,6 +842,28 @@ function applyRemoteState(data) {
   renderScoreBoard();
   renderMonitoring();
   pulse('Live state updated');
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  syncRuntime.heartbeatTimer = setInterval(() => {
+    if (!syncRuntime.connected || document.hidden) return;
+    publishPresence();
+  }, 25000);
+}
+
+function stopHeartbeat() {
+  if (syncRuntime.heartbeatTimer) clearInterval(syncRuntime.heartbeatTimer);
+  syncRuntime.heartbeatTimer = 0;
+}
+
+function publishPresence() {
+  if (!syncRuntime.connected || !syncRuntime.roomRef || !syncRuntime.authUid) return;
+  syncRuntime.roomRef.child(`presence/${syncRuntime.authUid}`).set({
+    ts: Date.now(),
+    name: state.auth.name || 'User',
+    tabId
+  }).catch(() => {});
 }
 
 function parseFirebaseConfig() {
@@ -830,6 +883,7 @@ function disconnectRealtime() {
   disconnectRealtimeListeners();
   syncRuntime.connected = false;
   state.sync.connected = false;
+  stopHeartbeat();
   updateSyncUI();
 }
 function handleRemoteEvent(ev) {
@@ -865,6 +919,7 @@ async function loadFirebaseSDK() {
   await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js');
   await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js');
   await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js');
+  await loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-messaging-compat.js');
   syncRuntime.firebaseLoaded = true;
 }
 
@@ -899,6 +954,42 @@ async function pushDeviceAlert(title, body) {
   notify(title, body);
 }
 
+async function enableBackgroundAlerts() {
+  if (!state.settings.notifications) return;
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    await loadFirebaseSDK();
+    const cfg = parseFirebaseConfig();
+    if (!window.firebase?.apps?.length) window.firebase.initializeApp(cfg);
+    const auth = window.firebase.auth();
+    if (!auth.currentUser) await auth.signInAnonymously();
+    syncRuntime.authUid = auth.currentUser?.uid || syncRuntime.authUid;
+
+    if (!FCM_VAPID_KEY) {
+      toast('Set FCM_VAPID_KEY in app.js to enable lockscreen push when app is closed');
+      return;
+    }
+
+    const reg = await navigator.serviceWorker.getRegistration() || await navigator.serviceWorker.register('./sw.js');
+    const messaging = window.firebase.messaging();
+    const token = await messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) return;
+
+    state.push.token = token;
+    saveState(false);
+    await registerPushToken(token);
+    toast('Background alerts enabled');
+  } catch (err) {
+    toast(`Push setup failed: ${String(err.message || err).slice(0, 80)}`);
+  }
+}
+
+async function registerPushToken(token) {
+  if (!syncRuntime.db || !syncRuntime.authUid || !state.auth.pairCode || !token) return;
+  const room = state.auth.pairCode.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const safe = encodeURIComponent(token);
+  await syncRuntime.db.ref(`roomTokens/${room}/${syncRuntime.authUid}/${safe}`).set(true);
+}
 function pulse(text) {
   state.pulse.unshift({ text, ts: Date.now() });
   state.pulse = state.pulse.slice(0, 40);
@@ -941,10 +1032,11 @@ function maybeBeep() {
   } catch {}
 }
 
-function bindDelete(container, arr, rerender, eventType) {
+function bindDelete(container, arr, rerender, eventType, confirmMessage = '') {
   container.querySelectorAll('button[data-del]').forEach((btn) => btn.addEventListener('click', (e) => {
     const idx = arr.findIndex((x) => x.id === e.target.dataset.del);
     if (idx === -1) return;
+    if (confirmMessage && !confirm(confirmMessage)) return;
     arr.splice(idx, 1);
     saveState();
     rerender();
@@ -954,3 +1046,25 @@ function bindDelete(container, arr, rerender, eventType) {
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function escapeHtml(str) { return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = 'love-link-v2';
+﻿const CACHE_NAME = 'love-link-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -38,4 +38,40 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { title: 'Love Link', body: event.data ? event.data.text() : 'New signal' };
+  }
 
+  const title = payload.notification?.title || payload.title || 'Love Link';
+  const body = payload.notification?.body || payload.body || 'New signal';
+  const data = payload.data || {};
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+      vibrate: [40, 80, 40],
+      data
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = './index.html';
+  event.waitUntil((async () => {
+    const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of windows) {
+      if ('focus' in w) {
+        w.focus();
+        return;
+      }
+    }
+    if (clients.openWindow) await clients.openWindow(targetUrl);
+  })());
+});
