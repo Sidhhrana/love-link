@@ -83,7 +83,7 @@ const els = {
   newPairCode: byId('newPairCode'), genPairCodeBtn: byId('genPairCodeBtn'), newAdminCode: byId('newAdminCode'), saveAdminCodeBtn: byId('saveAdminCodeBtn'),
   themeOverride: byId('themeOverride'), applyThemeBtn: byId('applyThemeBtn'), firebaseConfigInput: byId('firebaseConfigInput'),
   saveFirebaseBtn: byId('saveFirebaseBtn'), connectRealtimeBtn: byId('connectRealtimeBtn'), syncStatusText: byId('syncStatusText'),
-  monitorList: byId('monitorList'), logoutBtn: byId('logoutBtn'), toastHost: byId('toastHost'), signalOverlay: byId('signalOverlay'),
+  monitorList: byId('monitorList'), resetConfirmInput: byId('resetConfirmInput'), hardResetBtn: byId('hardResetBtn'), logoutBtn: byId('logoutBtn'), toastHost: byId('toastHost'), signalOverlay: byId('signalOverlay'),
   signalTitle: byId('signalTitle'), signalBody: byId('signalBody'), closeSignalBtn: byId('closeSignalBtn'), miniGame: byId('miniGame'),
   startGameBtn: byId('startGameBtn'), myBestScore: byId('myBestScore'), scoreBoard: byId('scoreBoard')
 };
@@ -325,6 +325,32 @@ function bindMain() {
 
   els.connectRealtimeBtn.addEventListener('click', connectRealtime);
 
+  els.hardResetBtn.addEventListener('click', async () => {
+    const phrase = (els.resetConfirmInput.value || '').trim();
+    if (phrase !== 'RESET LOVE LINK') {
+      toast('Type RESET LOVE LINK to unlock reset');
+      return;
+    }
+
+    const first = confirm('Hard reset will wipe all Love Link data on this device. Continue?');
+    if (!first) return;
+
+    const second = confirm('Final confirmation: this action cannot be undone. Reset now?');
+    if (!second) return;
+
+    const cloud = confirm('Also wipe cloud data for this pair code on ALL devices?');
+    if (!cloud) return;
+
+    try {
+      await wipeRemoteRoomData();
+      disconnectRealtime();
+      localStorage.removeItem(LS_KEY);
+      sessionStorage.removeItem(TAB_KEY);
+      location.reload();
+    } catch (err) {
+      toast(`Reset failed: ${String(err.message || err).slice(0, 90)}`);
+    }
+  });
   els.logoutBtn.addEventListener('click', () => {
     state.auth.loggedIn = false;
     disconnectRealtime();
@@ -867,6 +893,27 @@ function publishPresence() {
   }).catch(() => {});
 }
 
+async function wipeRemoteRoomData() {
+  if (!state.auth.pairCode) throw new Error('Pair code missing');
+
+  await loadFirebaseSDK();
+  const cfg = parseFirebaseConfig();
+  if (!window.firebase?.apps?.length) window.firebase.initializeApp(cfg);
+
+  const auth = window.firebase.auth();
+  if (!auth.currentUser) await auth.signInAnonymously();
+  syncRuntime.authUid = auth.currentUser?.uid || syncRuntime.authUid;
+
+  const db = window.firebase.database();
+  const room = state.auth.pairCode.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+  const updates = {};
+  updates[`rooms/${room}`] = null;
+  updates[`roomTokens/${room}`] = null;
+  updates[`roomMembers/${room}`] = null;
+
+  await db.ref().update(updates);
+}
 function parseFirebaseConfig() {
   if (!state.sync.firebaseConfig?.trim()) return FIREBASE_DEFAULT_CONFIG;
   return JSON.parse(state.sync.firebaseConfig);
@@ -1047,6 +1094,11 @@ function bindDelete(container, arr, rerender, eventType, confirmMessage = '') {
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function escapeHtml(str) { return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
+
+
+
+
+
 
 
 
