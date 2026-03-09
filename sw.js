@@ -1,10 +1,11 @@
-﻿const CACHE_NAME = 'love-link-v3';
+const APP_VERSION = '20260310';
+const CACHE_NAME = `love-link-v${APP_VERSION}`;
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './styles.css',
-  './app.js',
+  `./styles.css?v=${APP_VERSION}`,
+  `./app.js?v=${APP_VERSION}`,
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];
@@ -23,6 +24,21 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  // Prefer fresh HTML so GitHub Pages deploys show up immediately.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', clone));
+          return response;
+        })
+        .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
