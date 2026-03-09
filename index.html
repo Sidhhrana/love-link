@@ -10,10 +10,11 @@
   <title>Love Link</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260310" />
+  <link rel="stylesheet" href="./styles.css?v=20260310-ux2" />
 </head>
 <body>
   <div class="bg-layer"></div>
+  <div id="wallpaperLayer" class="wallpaper-layer"></div>
 
   <div id="menuBackdrop" class="menu-backdrop hidden"></div>
   <aside id="sideMenu" class="side-menu liquid-card hidden">
@@ -27,6 +28,7 @@
       <button data-tab="game">Game</button>
       <button data-tab="goals">Goals</button>
       <button data-tab="dates">Dates</button>
+      <button data-tab="reminders">Reminders</button>
       <button data-tab="letters">Letters</button>
       <button data-tab="settings">Settings</button>
     </nav>
@@ -78,7 +80,7 @@
           <h2>Miss Signal</h2>
           <p class="small">One tap, instant signal to your person.</p>
           <div class="hero-orbit"></div>
-          <button id="missBtn" class="btn miss-btn-circle">I MISS YOU</button>
+          <button id="missBtn" class="btn miss-btn-circle"><span class="miss-btn-label">I MISS YOU</span></button>
           <p id="missStatus" class="status"></p>
           <div class="hero-meta">
             <div class="meta-pill">
@@ -104,10 +106,8 @@
               <div class="partner-ring" id="partnerRing">
                 <div id="partnerAvatar" class="avatar">P</div>
               </div>
-              <p class="small">Energy</p>
-              <input id="energySlider" class="ios-slider" type="range" min="0" max="100" value="50" />
-              <p class="small">Affection</p>
-              <input id="affectionSlider" class="ios-slider" type="range" min="0" max="100" value="70" />
+              <p class="small">Mood Level</p>
+              <input id="moodSlider" class="ios-slider" type="range" min="0" max="100" value="55" />
               <p id="moodText" class="small">Balanced and warm</p>
             </article>
 
@@ -189,6 +189,30 @@
         </article>
       </section>
 
+      <section id="reminders" class="screen">
+        <article class="liquid-card card stack reminders-clock">
+          <div class="card-head">
+            <h2>Reminders</h2>
+            <span class="chip">Synced</span>
+          </div>
+          <p class="small">Create reminders for your partner</p>
+          <div class="reminder-compose">
+            <input id="reminderTitle" placeholder="Drink water, take a break, call me..." maxlength="60" />
+            <div class="row two">
+              <input id="reminderTime" type="time" />
+              <select id="reminderRepeat">
+                <option value="none">Once</option>
+                <option value="daily">Every Day</option>
+                <option value="weekdays">Weekdays</option>
+                <option value="weekends">Weekends</option>
+              </select>
+            </div>
+            <button id="addReminderBtn" class="btn primary">Add Reminder</button>
+          </div>
+          <div id="remindersList" class="list"></div>
+        </article>
+      </section>
+
       <section id="letters" class="screen">
         <article class="liquid-card card stack">
           <h2>Open-When Letters</h2>
@@ -229,6 +253,24 @@
             <label class="control">Corner Radius <input id="radiusInput" class="ios-slider" type="range" min="14" max="32" step="1" /></label>
             <label class="control">UI Scale <input id="scaleInput" class="ios-slider" type="range" min="0.92" max="1.06" step="0.01" /></label>
           </div>
+
+          <article class="liquid-card card stack wall-card">
+            <div class="card-head">
+              <h3>Shared Background Wall</h3>
+              <span class="chip">iOS style</span>
+            </div>
+            <div class="wall-actions">
+              <input id="wallpaperFileInput" type="file" accept="image/*" class="hidden" />
+              <button id="chooseWallpaperBtn" class="btn ghost">Choose Photo</button>
+              <button id="removeWallpaperBtn" class="btn ghost">Remove Photo</button>
+            </div>
+            <div class="row two">
+              <label class="control">Background Blur <input id="wallpaperBlurInput" class="ios-slider" type="range" min="0" max="24" step="1" /></label>
+              <label class="control">Dim Overlay <input id="wallpaperDimInput" class="ios-slider" type="range" min="0" max="0.75" step="0.01" /></label>
+            </div>
+            <button id="applyWallpaperBtn" class="btn primary">Apply To Both</button>
+            <p id="wallpaperStatus" class="hint">No custom wallpaper selected</p>
+          </article>
 
           <div class="row two">
             <button id="saveSettingsBtn" class="btn primary">Save Settings</button>
@@ -298,6 +340,6 @@
   </div>
 
   <div id="toastHost" class="toast-host"></div>
-  <script src="./app.js?v=20260310"></script>
+  <script src="./app.js?v=20260310-ux2"></script>
 </body>
 </html>

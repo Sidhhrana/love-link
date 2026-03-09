@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260310';
+const APP_VERSION = '20260310-ux2';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -18,14 +18,16 @@ const defaultState = {
   auth: { loggedIn: false, name: '', role: 'guy', pairCode: '', partnerName: 'Partner' },
   settings: { anniversary: '', adminCode: 'lovelink-admin', themeOverride: 'auto', notifications: false },
   preferences: { focusMode: false, haptics: true, soundCue: false, blur: 18, motion: 1, radius: 24, scale: 1 },
+  wallpaper: { imageData: '', blur: 10, dim: 0.34 },
   sync: { firebaseConfig: '', enabled: true, connected: false, lastEventAt: 0, lastNotifiedMissAt: 0 },
   push: { token: '' },
   songs: [{ id: 'spotify-main', title: 'Our Spotify Playlist', url: 'https://open.spotify.com/playlist/6xqr5eKiT53i18ZEjJhCfY?si=c11fe2668a994cc8' }],
   goals: [],
   dates: [],
+  reminders: [],
   letters: [],
   letterTombstones: {},
-  mood: { energy: 50, affection: 70 },
+  mood: { value: 55 },
   dailyNote: '',
   missLog: [],
   pulse: [],
@@ -57,17 +59,25 @@ const gameRuntime = {
   score: 0,
   level: 1,
   lives: 3,
+  startedAt: 0,
   playerX: 0,
   targetX: 0,
   width: 640,
   height: 300,
-  playerW: 94,
+  playerW: 110,
+  basePlayerW: 110,
+  minPlayerW: 62,
   playerH: 12,
   ballX: 0,
   ballY: 0,
   ballR: 10,
-  vx: 140,
-  vy: 190,
+  baseBallR: 10,
+  minBallR: 7,
+  vx: 120,
+  vy: 170,
+  baseSpeed: 170,
+  maxSpeed: 420,
+  pointerActive: false,
   lastTickAt: 0,
   raf: 0,
   bindReady: false
@@ -78,6 +88,8 @@ let deferredInstallPrompt = null;
 let activeScreen = 'home';
 let menuAnimating = false;
 let drawerOpen = false;
+let reminderTimer = 0;
+let pendingWallpaperData = '';
 
 const els = {
   authScreen: byId('authScreen'), appRoot: byId('appRoot'), roleInput: byId('roleInput'), nameInput: byId('nameInput'),
@@ -87,16 +99,19 @@ const els = {
   drawerToggleBtn: byId('drawerToggleBtn'), homeDrawer: byId('homeDrawer'), homeDrawerHandle: byId('homeDrawerHandle'),
   vibePingBtn: byId('vibePingBtn'), missStatus: byId('missStatus'), moodLabel: byId('moodLabel'), moodText: byId('moodText'),
   homeNoteState: byId('homeNoteState'), homeMoodState: byId('homeMoodState'),
-  energySlider: byId('energySlider'), affectionSlider: byId('affectionSlider'), partnerAvatar: byId('partnerAvatar'), partnerRing: byId('partnerRing'),
+  moodSlider: byId('moodSlider'), partnerAvatar: byId('partnerAvatar'), partnerRing: byId('partnerRing'),
   daysTogether: byId('daysTogether'), sinceText: byId('sinceText'), dailyPrompt: byId('dailyPrompt'), savePromptBtn: byId('savePromptBtn'),
   promptSaved: byId('promptSaved'), pulseList: byId('pulseList'), navTabs: byId('navTabs'), songTitle: byId('songTitle'),
   songUrl: byId('songUrl'), addSongBtn: byId('addSongBtn'), songsList: byId('songsList'), goalText: byId('goalText'), goalDate: byId('goalDate'),
   addGoalBtn: byId('addGoalBtn'), goalsList: byId('goalsList'), dateTitle: byId('dateTitle'), dateValue: byId('dateValue'),
   addDateBtn: byId('addDateBtn'), datesList: byId('datesList'), calendarTitle: byId('calendarTitle'), calendarGrid: byId('calendarGrid'),
+  reminderTitle: byId('reminderTitle'), reminderTime: byId('reminderTime'), reminderRepeat: byId('reminderRepeat'), addReminderBtn: byId('addReminderBtn'), remindersList: byId('remindersList'),
   letterTitle: byId('letterTitle'), letterBody: byId('letterBody'), letterLockType: byId('letterLockType'), letterLockValue: byId('letterLockValue'),
   addLetterBtn: byId('addLetterBtn'), lettersList: byId('lettersList'), annivInput: byId('annivInput'), partnerNameInput: byId('partnerNameInput'),
   saveSettingsBtn: byId('saveSettingsBtn'), requestNotifBtn: byId('requestNotifBtn'), focusToggle: byId('focusToggle'), hapticToggle: byId('hapticToggle'),
   soundToggle: byId('soundToggle'), blurInput: byId('blurInput'), motionInput: byId('motionInput'), radiusInput: byId('radiusInput'),
+  wallpaperLayer: byId('wallpaperLayer'), wallpaperFileInput: byId('wallpaperFileInput'), chooseWallpaperBtn: byId('chooseWallpaperBtn'), removeWallpaperBtn: byId('removeWallpaperBtn'),
+  wallpaperBlurInput: byId('wallpaperBlurInput'), wallpaperDimInput: byId('wallpaperDimInput'), applyWallpaperBtn: byId('applyWallpaperBtn'), wallpaperStatus: byId('wallpaperStatus'),
   scaleInput: byId('scaleInput'), adminCodeInput: byId('adminCodeInput'), adminOpenBtn: byId('adminOpenBtn'), adminPanel: byId('adminPanel'),
   newPairCode: byId('newPairCode'), genPairCodeBtn: byId('genPairCodeBtn'), newAdminCode: byId('newAdminCode'), saveAdminCodeBtn: byId('saveAdminCodeBtn'),
   themeOverride: byId('themeOverride'), applyThemeBtn: byId('applyThemeBtn'), firebaseConfigInput: byId('firebaseConfigInput'),
@@ -110,6 +125,7 @@ const els = {
 setupPWA();
 bindAuth();
 bindMain();
+setupUXMotion();
 paintFromState();
 handleMissQuery();
 saveState(false);
@@ -123,6 +139,59 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function byId(id) { return document.getElementById(id); }
+
+function setupUXMotion() {
+  const root = document.documentElement;
+  let tx = 0;
+  let ty = 0;
+  let cx = 0;
+  let cy = 0;
+  let raf = 0;
+
+  const render = () => {
+    cx += (tx - cx) * 0.12;
+    cy += (ty - cy) * 0.12;
+    root.style.setProperty('--tilt-x', `${(cx * 9).toFixed(2)}px`);
+    root.style.setProperty('--tilt-y', `${(cy * 9).toFixed(2)}px`);
+    root.style.setProperty('--mx', `${(50 + cx * 18).toFixed(2)}%`);
+    root.style.setProperty('--my', `${(50 + cy * 18).toFixed(2)}%`);
+    raf = requestAnimationFrame(render);
+  };
+  raf = requestAnimationFrame(render);
+
+  window.addEventListener('pointermove', (ev) => {
+    const nx = (ev.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
+    const ny = (ev.clientY / Math.max(1, window.innerHeight)) * 2 - 1;
+    tx = Math.max(-1, Math.min(1, nx));
+    ty = Math.max(-1, Math.min(1, ny));
+  }, { passive: true });
+
+  window.addEventListener('pointerleave', () => { tx = 0; ty = 0; }, { passive: true });
+
+  window.addEventListener('deviceorientation', (ev) => {
+    if (document.hidden) return;
+    const gx = Number(ev.gamma || 0);
+    const gy = Number(ev.beta || 0);
+    if (!Number.isFinite(gx) || !Number.isFinite(gy)) return;
+    tx = Math.max(-1, Math.min(1, gx / 22));
+    ty = Math.max(-1, Math.min(1, gy / 38));
+  }, true);
+
+  document.addEventListener('pointerdown', (ev) => {
+    const target = ev.target.closest('button, .btn, .hamburger, .drawer-arrow, .menu-nav button');
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const y = ev.clientY - rect.top;
+    target.style.setProperty('--tap-x', `${x}px`);
+    target.style.setProperty('--tap-y', `${y}px`);
+    target.classList.remove('tap');
+    void target.offsetWidth;
+    target.classList.add('tap');
+    setTimeout(() => target.classList.remove('tap'), 380);
+    if (state.auth.loggedIn) maybeVibrate([8]);
+  });
+}
 
 function getTabId() {
   let v = sessionStorage.getItem(TAB_KEY);
@@ -233,8 +302,7 @@ function bindMain() {
 
   els.closeSignalBtn.addEventListener('click', () => els.signalOverlay.classList.add('hidden'));
 
-  els.energySlider.addEventListener('input', saveMoodFromUI);
-  els.affectionSlider.addEventListener('input', saveMoodFromUI);
+  if (els.moodSlider) els.moodSlider.addEventListener('input', saveMoodFromUI);
   els.savePromptBtn.addEventListener('click', saveDailyPrompt);
 
   if (els.addSongBtn && els.songTitle && els.songUrl) {
@@ -276,6 +344,31 @@ function bindMain() {
     renderDates();
     emitEvent('date_add', { title });
   });
+
+  if (els.addReminderBtn) {
+    els.addReminderBtn.addEventListener('click', () => {
+      const title = (els.reminderTitle.value || '').trim();
+      const time = els.reminderTime.value;
+      const repeat = els.reminderRepeat.value || 'none';
+      if (!title || !time) return toast('Set reminder title and time');
+      state.reminders.unshift({
+        id: uid(),
+        title,
+        time,
+        repeat,
+        enabled: true,
+        senderUid: syncRuntime.authUid || '',
+        senderName: state.auth.name || 'Partner',
+        lastFiredOn: ''
+      });
+      state.reminders = state.reminders.slice(0, 80);
+      els.reminderTitle.value = '';
+      saveState();
+      renderReminders();
+      emitEvent('reminder_add', { title, time, repeat });
+      toast('Reminder added');
+    });
+  }
 
   els.letterLockType.addEventListener('change', () => {
     if (els.letterLockType.value === 'mood') {
@@ -319,6 +412,59 @@ function bindMain() {
     renderHomeBits();
     emitEvent('settings_update', {});
   });
+
+  if (els.chooseWallpaperBtn && els.wallpaperFileInput) {
+    els.chooseWallpaperBtn.addEventListener('click', () => els.wallpaperFileInput.click());
+    els.wallpaperFileInput.addEventListener('change', async (ev) => {
+      const file = ev.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) return toast('Choose an image file');
+      try {
+        pendingWallpaperData = await compressImageFile(file);
+        applyWallpaperPreview(pendingWallpaperData, Number(els.wallpaperBlurInput?.value || state.wallpaper.blur || 10), Number(els.wallpaperDimInput?.value || state.wallpaper.dim || 0.34));
+        if (els.wallpaperStatus) els.wallpaperStatus.textContent = `Selected: ${file.name}`;
+      } catch {
+        toast('Could not load image');
+      } finally {
+        els.wallpaperFileInput.value = '';
+      }
+    });
+  }
+
+  if (els.removeWallpaperBtn) {
+    els.removeWallpaperBtn.addEventListener('click', () => {
+      pendingWallpaperData = '';
+      state.wallpaper.imageData = '';
+      saveState();
+      applyWallpaperFromState();
+      emitEvent('wallpaper_update', {});
+      if (els.wallpaperStatus) els.wallpaperStatus.textContent = 'No custom wallpaper selected';
+    });
+  }
+
+  if (els.applyWallpaperBtn) {
+    els.applyWallpaperBtn.addEventListener('click', () => {
+      if (pendingWallpaperData) state.wallpaper.imageData = pendingWallpaperData;
+      state.wallpaper.blur = Number(els.wallpaperBlurInput?.value || state.wallpaper.blur || 10);
+      state.wallpaper.dim = Number(els.wallpaperDimInput?.value || state.wallpaper.dim || 0.34);
+      saveState();
+      applyWallpaperFromState();
+      emitEvent('wallpaper_update', {});
+      if (els.wallpaperStatus) els.wallpaperStatus.textContent = state.wallpaper.imageData ? 'Wallpaper applied' : 'Gradient mode applied';
+      toast('Shared wall applied');
+    });
+  }
+
+  if (els.wallpaperBlurInput) {
+    els.wallpaperBlurInput.addEventListener('input', () => {
+      applyWallpaperPreview(pendingWallpaperData || state.wallpaper.imageData, Number(els.wallpaperBlurInput.value || 10), Number(els.wallpaperDimInput?.value || state.wallpaper.dim || 0.34));
+    });
+  }
+  if (els.wallpaperDimInput) {
+    els.wallpaperDimInput.addEventListener('input', () => {
+      applyWallpaperPreview(pendingWallpaperData || state.wallpaper.imageData, Number(els.wallpaperBlurInput?.value || state.wallpaper.blur || 10), Number(els.wallpaperDimInput.value || 0.34));
+    });
+  }
 
   els.requestNotifBtn.addEventListener('click', async () => {
     if (!('Notification' in window)) return toast('Notifications not supported');
@@ -397,6 +543,7 @@ function bindMain() {
   els.logoutBtn.addEventListener('click', () => {
     state.auth.loggedIn = false;
     disconnectRealtime();
+    stopReminderEngine();
     saveState(false);
     paintFromState();
   });
@@ -407,6 +554,7 @@ function bindMain() {
 }
 function paintFromState() {
   if (!state.auth.loggedIn) {
+    stopReminderEngine();
     els.authScreen.classList.remove('hidden');
     els.appRoot.classList.add('hidden');
     els.roleInput.value = state.auth.role || 'guy';
@@ -425,8 +573,7 @@ function paintFromState() {
   els.annivInput.value = state.settings.anniversary || '';
   els.partnerNameInput.value = state.auth.partnerName || '';
   els.dailyPrompt.value = state.dailyNote || '';
-  els.energySlider.value = String(state.mood.energy ?? 50);
-  els.affectionSlider.value = String(state.mood.affection ?? 70);
+  if (els.moodSlider) els.moodSlider.value = String(normalizeMoodValue(state.mood?.value ?? state.mood?.energy ?? 55));
   els.themeOverride.value = state.settings.themeOverride || 'auto';
   els.focusToggle.checked = !!state.preferences.focusMode;
   els.hapticToggle.checked = !!state.preferences.haptics;
@@ -436,11 +583,19 @@ function paintFromState() {
   els.radiusInput.value = String(state.preferences.radius || 24);
   els.scaleInput.value = String(state.preferences.scale || 1);
   els.firebaseConfigInput.value = state.sync.firebaseConfig || JSON.stringify(FIREBASE_DEFAULT_CONFIG, null, 2);
+  if (els.wallpaperBlurInput) els.wallpaperBlurInput.value = String(state.wallpaper?.blur ?? 10);
+  if (els.wallpaperDimInput) els.wallpaperDimInput.value = String(state.wallpaper?.dim ?? 0.34);
+  if (els.wallpaperStatus) els.wallpaperStatus.textContent = state.wallpaper?.imageData ? 'Custom wallpaper active' : 'No custom wallpaper selected';
+  if (els.reminderTime && !els.reminderTime.value) {
+    const now = new Date();
+    els.reminderTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }
 
   renderHomeBits();
   renderSongs();
   renderGoals();
   renderDates();
+  renderReminders();
   renderLetters();
   renderPulse();
   renderMonitoring();
@@ -448,6 +603,8 @@ function paintFromState() {
   updateSyncUI();
   showScreen(activeScreen);
   setDrawerOpen(drawerOpen, true);
+  applyWallpaperFromState();
+  startReminderEngine();
 }
 
 function paintHeader() {
@@ -552,8 +709,50 @@ function applyPreferences() {
   document.documentElement.style.setProperty('--scale', String(state.preferences.scale ?? 1));
 }
 
+function applyWallpaperPreview(imageData, blur, dim) {
+  if (!els.wallpaperLayer) return;
+  const b = Math.max(0, Math.min(24, Number(blur || 0)));
+  const d = Math.max(0, Math.min(0.8, Number(dim || 0)));
+  els.wallpaperLayer.style.setProperty('--wall-blur', `${b}px`);
+  els.wallpaperLayer.style.setProperty('--wall-dim', String(d));
+  els.wallpaperLayer.style.backgroundImage = imageData
+    ? `linear-gradient(rgba(4,10,20,${d}), rgba(4,10,20,${d})), url("${imageData}")`
+    : `radial-gradient(900px 460px at 10% 10%, rgba(113,184,255,0.25), transparent 55%), radial-gradient(900px 460px at 90% 90%, rgba(255,158,199,0.22), transparent 60%), linear-gradient(160deg, rgba(10,24,50,0.35), rgba(10,18,38,0.3))`;
+}
+
+function applyWallpaperFromState() {
+  applyWallpaperPreview(state.wallpaper?.imageData || '', state.wallpaper?.blur ?? 10, state.wallpaper?.dim ?? 0.34);
+}
+
+function compressImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('image decode failed'));
+      img.onload = () => {
+        const maxSide = 1280;
+        const ratio = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * ratio));
+        const h = Math.max(1, Math.round(img.height * ratio));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.74));
+      };
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function applyTheme() {
   const role = (state.settings.themeOverride && state.settings.themeOverride !== 'auto') ? state.settings.themeOverride : state.auth.role;
+  document.body.classList.toggle('role-girl', role === 'girl');
+  document.body.classList.toggle('role-guy', role !== 'girl');
   if (role === 'girl') {
     setVars({ '--bg1': '#230d19', '--bg2': '#41172d', '--glass': 'rgba(77, 31, 53, .50)', '--accent': '#ff97c5', '--accent2': '#ffd7e9', '--muted': '#ffd7e8', '--glow': 'rgba(255, 151, 197, .58)' });
   } else {
@@ -563,20 +762,22 @@ function applyTheme() {
 
 function setVars(vars) { Object.entries(vars).forEach(([k, v]) => document.documentElement.style.setProperty(k, v)); }
 
+function normalizeMoodValue(v) {
+  return Math.max(0, Math.min(100, Number(v || 0)));
+}
+
 function moodProfile(m) {
-  const e = Number(m.energy || 0);
-  const a = Number(m.affection || 0);
-  if (e < 30 && a < 45) return { label: 'Low', text: 'Low energy and emotionally quiet', ring: '#ffb476' };
-  if (e < 35 && a >= 45) return { label: 'Tired', text: 'Low energy but still affectionate', ring: '#ffd28c' };
-  if (e >= 35 && e <= 70 && a >= 40 && a <= 75) return { label: 'Balanced', text: 'Balanced and warm', ring: '#7fd7c0' };
-  if (e > 70 && a >= 60) return { label: 'Sparked', text: 'High energy and high affection', ring: '#7dc4ff' };
-  if (e > 70 && a < 50) return { label: 'Restless', text: 'High energy, low affection bandwidth', ring: '#b1b8ff' };
-  return { label: 'Soft', text: 'Calm and caring', ring: '#a3d9ff' };
+  const value = normalizeMoodValue(m?.value ?? m?.energy ?? 55);
+  if (value <= 20) return { value, label: 'Tired', text: 'Low battery mode. Gentle day.', ring: '#ffbc8f' };
+  if (value <= 40) return { value, label: 'Calm', text: 'Quiet and steady vibes.', ring: '#ffd79a' };
+  if (value <= 60) return { value, label: 'Balanced', text: 'Balanced and warm.', ring: '#7fd7c0' };
+  if (value <= 80) return { value, label: 'Happy', text: 'Good energy and affectionate.', ring: '#7dc4ff' };
+  return { value, label: 'Excited', text: 'High energy and playful mood.', ring: '#b7a8ff' };
 }
 
 function saveMoodFromUI() {
-  state.mood.energy = Number(els.energySlider.value || 50);
-  state.mood.affection = Number(els.affectionSlider.value || 70);
+  const value = normalizeMoodValue(els.moodSlider?.value || 55);
+  state.mood = { value };
   saveState();
   renderMood();
   emitEvent('mood_update', { mood: state.mood });
@@ -584,6 +785,7 @@ function saveMoodFromUI() {
 
 function renderMood() {
   const m = moodProfile(state.mood);
+  if (els.moodSlider && document.activeElement !== els.moodSlider) els.moodSlider.value = String(m.value);
   els.moodLabel.textContent = m.label;
   els.moodText.textContent = m.text;
   if (els.homeMoodState) els.homeMoodState.textContent = m.label;
@@ -692,6 +894,115 @@ function renderDates() {
   renderHomeBits();
 }
 
+function renderReminders() {
+  if (!els.remindersList) return;
+  els.remindersList.innerHTML = '';
+  state.reminders
+    .slice()
+    .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')))
+    .forEach((r) => {
+      const row = document.createElement('div');
+      row.className = 'reminder-row';
+      row.innerHTML = `
+        <div class="reminder-main">
+          <div class="reminder-time">${escapeHtml(formatReminderTime(r.time || '00:00'))}</div>
+          <div class="reminder-meta">
+            <strong>${escapeHtml(r.title)}</strong>
+            <small>${escapeHtml(reminderRepeatLabel(r.repeat))}</small>
+          </div>
+        </div>
+        <div class="reminder-actions">
+          <label class="ios-toggle mini"><input data-rem-toggle="${r.id}" type="checkbox" ${r.enabled ? 'checked' : ''} /><span></span></label>
+          <button data-rem-del="${r.id}" class="btn ghost">X</button>
+        </div>
+      `;
+      els.remindersList.appendChild(row);
+    });
+
+  els.remindersList.querySelectorAll('input[data-rem-toggle]').forEach((el) => el.addEventListener('change', (ev) => {
+    const id = ev.target.dataset.remToggle;
+    const r = state.reminders.find((x) => x.id === id);
+    if (!r) return;
+    r.enabled = ev.target.checked;
+    saveState();
+    emitEvent('reminder_toggle', { id, enabled: r.enabled });
+  }));
+
+  els.remindersList.querySelectorAll('button[data-rem-del]').forEach((btn) => btn.addEventListener('click', () => {
+    const id = btn.dataset.remDel;
+    const idx = state.reminders.findIndex((x) => x.id === id);
+    if (idx === -1) return;
+    state.reminders.splice(idx, 1);
+    saveState();
+    renderReminders();
+    emitEvent('reminder_delete', { id });
+  }));
+}
+
+function reminderRepeatLabel(repeat) {
+  if (repeat === 'daily') return 'Every Day';
+  if (repeat === 'weekdays') return 'Weekdays';
+  if (repeat === 'weekends') return 'Weekends';
+  return 'Once';
+}
+
+function formatReminderTime(hhmm) {
+  const [h, m] = String(hhmm || '00:00').split(':').map((v) => Number(v || 0));
+  const dt = new Date();
+  dt.setHours(h, m, 0, 0);
+  return dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function startReminderEngine() {
+  stopReminderEngine();
+  reminderTimer = setInterval(checkRemindersDue, 15000);
+  checkRemindersDue();
+}
+
+function stopReminderEngine() {
+  if (reminderTimer) clearInterval(reminderTimer);
+  reminderTimer = 0;
+}
+
+function reminderAppliesToday(reminder, now) {
+  const day = now.getDay(); // 0 sun ... 6 sat
+  if (reminder.repeat === 'weekdays') return day >= 1 && day <= 5;
+  if (reminder.repeat === 'weekends') return day === 0 || day === 6;
+  return true;
+}
+
+function checkRemindersDue() {
+  if (!state.auth.loggedIn) return;
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const nowKey = `${hh}:${mm}`;
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  let changed = false;
+
+  for (const r of state.reminders) {
+    if (!r.enabled || !r.time || r.time !== nowKey) continue;
+    if (!reminderAppliesToday(r, now)) continue;
+    if (r.lastFiredOn === todayKey) continue;
+
+    const isOwn = (r.senderUid && r.senderUid === syncRuntime.authUid) || (r.senderName && r.senderName === state.auth.name);
+    if (!isOwn) {
+      showSignalOverlay(`Reminder: ${r.title}`, `Scheduled for ${formatReminderTime(r.time)}`);
+      pushDeviceAlert(`Reminder: ${r.title}`, `From ${r.senderName || 'your partner'} at ${formatReminderTime(r.time)}`);
+      maybeVibrate([25, 45, 25]);
+    }
+
+    r.lastFiredOn = todayKey;
+    if (r.repeat === 'none') r.enabled = false;
+    changed = true;
+  }
+
+  if (changed) {
+    saveState();
+    renderReminders();
+  }
+}
+
 function renderLetters() {
   els.lettersList.innerHTML = '';
   state.letters.forEach((l) => {
@@ -717,8 +1028,8 @@ function isLetterUnlocked(letter) {
   const mood = moodProfile(state.mood).label.toLowerCase();
   const gate = (letter.lockValue || '').toLowerCase();
   if (!gate) return false;
-  if (gate.includes('calm') || gate.includes('low')) return mood === 'low' || mood === 'tired' || mood === 'soft';
-  if (gate.includes('high') || gate.includes('spark')) return mood === 'sparked' || mood === 'restless';
+  if (gate.includes('calm') || gate.includes('low')) return mood === 'tired' || mood === 'calm';
+  if (gate.includes('high') || gate.includes('spark')) return mood === 'happy' || mood === 'excited';
   return mood === gate;
 }
 
@@ -806,12 +1117,19 @@ function startMiniGame() {
   gameRuntime.score = 0;
   gameRuntime.level = 1;
   gameRuntime.lives = 3;
+  gameRuntime.startedAt = performance.now();
+  gameRuntime.basePlayerW = Math.max(96, Math.min(132, Math.floor(w * 0.16)));
+  gameRuntime.playerW = gameRuntime.basePlayerW;
+  gameRuntime.baseBallR = Math.max(9, Math.min(11, Math.floor(w * 0.015)));
+  gameRuntime.ballR = gameRuntime.baseBallR;
   gameRuntime.playerX = w / 2 - gameRuntime.playerW / 2;
   gameRuntime.targetX = gameRuntime.playerX;
   gameRuntime.ballX = w / 2;
   gameRuntime.ballY = h * 0.42;
-  gameRuntime.vx = (Math.random() > 0.5 ? 1 : -1) * 170;
-  gameRuntime.vy = 190;
+  gameRuntime.baseSpeed = Math.max(160, Math.floor(w * 0.24));
+  gameRuntime.maxSpeed = Math.max(380, Math.floor(w * 0.62));
+  gameRuntime.vx = (Math.random() > 0.5 ? 1 : -1) * (gameRuntime.baseSpeed * 0.72);
+  gameRuntime.vy = gameRuntime.baseSpeed;
   gameRuntime.lastTickAt = performance.now();
   if (els.pauseGameBtn) els.pauseGameBtn.textContent = 'Pause';
   renderScoreBoard();
@@ -824,7 +1142,15 @@ function startMiniGame() {
     }
     const dt = Math.min(0.05, (now - gameRuntime.lastTickAt) / 1000 || 0.016);
     gameRuntime.lastTickAt = now;
-    gameRuntime.playerX += (gameRuntime.targetX - gameRuntime.playerX) * Math.min(1, dt * 16);
+    const elapsedSec = Math.max(0, (now - gameRuntime.startedAt) / 1000);
+    const levelByTime = Math.floor(elapsedSec / 7);
+    const levelByScore = Math.floor(gameRuntime.score / 6);
+    gameRuntime.level = 1 + levelByTime + levelByScore;
+    const difficulty = Math.max(0, gameRuntime.level - 1);
+    gameRuntime.playerW = Math.max(gameRuntime.minPlayerW, gameRuntime.basePlayerW - difficulty * 2);
+    gameRuntime.ballR = Math.max(gameRuntime.minBallR, gameRuntime.baseBallR - Math.floor(difficulty / 2));
+
+    gameRuntime.playerX += (gameRuntime.targetX - gameRuntime.playerX) * Math.min(1, dt * 18);
     gameRuntime.playerX = Math.max(8, Math.min(w - gameRuntime.playerW - 8, gameRuntime.playerX));
     const paddleY = h - 28;
 
@@ -854,13 +1180,16 @@ function startMiniGame() {
       const paddleCenter = gameRuntime.playerX + gameRuntime.playerW / 2;
       const offset = (gameRuntime.ballX - paddleCenter) / (gameRuntime.playerW / 2);
       gameRuntime.ballY = paddleY - gameRuntime.ballR - 1;
-      gameRuntime.vy = -(Math.abs(gameRuntime.vy) + 14);
-      gameRuntime.vx += offset * 58;
+      gameRuntime.vy = -Math.abs(gameRuntime.vy);
+      gameRuntime.vx += offset * (54 + difficulty * 2);
       gameRuntime.score += 1;
-      gameRuntime.level = 1 + Math.floor(gameRuntime.score / 6);
-      const cap = 190 + gameRuntime.level * 18;
-      gameRuntime.vx = Math.max(-cap, Math.min(cap, gameRuntime.vx));
-      gameRuntime.vy = Math.max(-cap, gameRuntime.vy);
+      const targetSpeed = Math.min(gameRuntime.maxSpeed, gameRuntime.baseSpeed + difficulty * 12 + gameRuntime.score * 1.8);
+      const speedNow = Math.hypot(gameRuntime.vx, gameRuntime.vy) || targetSpeed;
+      const k = targetSpeed / speedNow;
+      gameRuntime.vx *= k;
+      gameRuntime.vy *= k;
+      gameRuntime.vx = Math.max(-gameRuntime.maxSpeed, Math.min(gameRuntime.maxSpeed, gameRuntime.vx));
+      gameRuntime.vy = Math.max(-gameRuntime.maxSpeed, Math.min(gameRuntime.maxSpeed, gameRuntime.vy));
       maybeBeep();
       renderScoreBoard();
     }
@@ -874,19 +1203,20 @@ function startMiniGame() {
       }
       gameRuntime.ballX = w / 2;
       gameRuntime.ballY = h * 0.42;
-      gameRuntime.vx = (Math.random() > 0.5 ? 1 : -1) * (160 + gameRuntime.level * 10);
-      gameRuntime.vy = 190 + gameRuntime.level * 12;
+      const relaunchSpeed = Math.min(gameRuntime.maxSpeed, gameRuntime.baseSpeed + difficulty * 12);
+      gameRuntime.vx = (Math.random() > 0.5 ? 1 : -1) * relaunchSpeed * 0.7;
+      gameRuntime.vy = relaunchSpeed;
       maybeVibrate([35, 25, 35]);
       renderScoreBoard();
     }
 
     ctx.clearRect(0, 0, w, h);
     const grd = ctx.createLinearGradient(0, 0, 0, h);
-    grd.addColorStop(0, 'rgba(138,190,255,0.16)');
-    grd.addColorStop(1, 'rgba(11,20,44,0.75)');
+    grd.addColorStop(0, 'rgba(149,203,255,0.18)');
+    grd.addColorStop(1, 'rgba(8,18,42,0.84)');
     ctx.fillStyle = grd;
     ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
     for (let i = 0; i < 8; i += 1) {
       ctx.beginPath();
@@ -895,20 +1225,27 @@ function startMiniGame() {
       ctx.stroke();
     }
 
+    ctx.shadowColor = 'rgba(110,190,255,0.55)';
+    ctx.shadowBlur = 16;
     ctx.fillStyle = '#e9f4ff';
     ctx.fillRect(gameRuntime.playerX, paddleY, gameRuntime.playerW, gameRuntime.playerH);
+    ctx.shadowBlur = 0;
     const ballGrad = ctx.createRadialGradient(gameRuntime.ballX - 3, gameRuntime.ballY - 4, 2, gameRuntime.ballX, gameRuntime.ballY, gameRuntime.ballR + 2);
     ballGrad.addColorStop(0, '#ffffff');
     ballGrad.addColorStop(1, '#ff7fa7');
+    ctx.shadowColor = 'rgba(255,123,171,0.65)';
+    ctx.shadowBlur = 18;
     ctx.fillStyle = ballGrad;
     ctx.beginPath();
     ctx.arc(gameRuntime.ballX, gameRuntime.ballY, gameRuntime.ballR, 0, Math.PI * 2);
     ctx.fill();
+    ctx.shadowBlur = 0;
 
     ctx.fillStyle = '#ecf4ff';
     ctx.font = '16px Segoe UI';
     ctx.fillText(`Score ${gameRuntime.score}`, 14, 24);
     ctx.fillText(`Lives ${gameRuntime.lives}`, 14, 46);
+    ctx.fillText(`Level ${gameRuntime.level}`, w - 98, 24);
 
     gameRuntime.raf = requestAnimationFrame(tick);
   };
@@ -953,8 +1290,21 @@ function bindGameInput() {
   c.addEventListener('mousemove', (e) => move(e.clientX));
   c.addEventListener('touchmove', (e) => { move(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
   c.addEventListener('touchstart', (e) => { move(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
-  c.addEventListener('pointerdown', (e) => move(e.clientX));
-  c.addEventListener('pointermove', (e) => { if (e.pressure > 0 || e.buttons) move(e.clientX); });
+  c.addEventListener('pointerdown', (e) => {
+    gameRuntime.pointerActive = true;
+    c.setPointerCapture?.(e.pointerId);
+    move(e.clientX);
+  });
+  c.addEventListener('pointermove', (e) => {
+    if (gameRuntime.pointerActive || e.pressure > 0 || e.buttons) move(e.clientX);
+  });
+  c.addEventListener('pointerup', (e) => {
+    gameRuntime.pointerActive = false;
+    c.releasePointerCapture?.(e.pointerId);
+  });
+  c.addEventListener('pointercancel', () => {
+    gameRuntime.pointerActive = false;
+  });
 }
 
 function schedulePublishState() {
@@ -974,6 +1324,8 @@ function publishState() {
       songs: state.songs,
       goals: state.goals,
       dates: state.dates,
+      reminders: state.reminders,
+      wallpaper: state.wallpaper,
       letters: state.letters,
       letterTombstones: state.letterTombstones,
       mood: state.mood,
@@ -1070,6 +1422,8 @@ function applyRemoteState(data) {
   state.songs = data.songs || state.songs;
   state.goals = data.goals || state.goals;
   state.dates = data.dates || state.dates;
+  state.reminders = data.reminders || state.reminders;
+  state.wallpaper = data.wallpaper || state.wallpaper;
   state.letters = (data.letters || state.letters).filter((l) => !state.letterTombstones[l.id]);
   state.mood = data.mood || state.mood;
   state.dailyNote = data.dailyNote ?? state.dailyNote;
@@ -1085,7 +1439,9 @@ function applyRemoteState(data) {
   renderSongs();
   renderGoals();
   renderDates();
+  renderReminders();
   renderLetters();
+  applyWallpaperFromState();
   renderScoreBoard();
   renderMonitoring();
   pulse('Live state updated');
@@ -1174,6 +1530,19 @@ function handleRemoteEvent(ev) {
     state.game.bestByUser[ev.payload.key] = { name: ev.payload.name || who, score: Number(ev.payload.score || 0) };
     saveState(false);
     renderScoreBoard();
+  }
+  if (ev.type === 'reminder_delete' && ev.payload?.id) {
+    state.reminders = state.reminders.filter((x) => x.id !== ev.payload.id);
+    saveState(false);
+    renderReminders();
+  }
+  if (ev.type === 'reminder_toggle' && ev.payload?.id) {
+    const r = state.reminders.find((x) => x.id === ev.payload.id);
+    if (r) {
+      r.enabled = !!ev.payload.enabled;
+      saveState(false);
+      renderReminders();
+    }
   }
   if (ev.type === 'letter_delete' && ev.payload?.id) {
     state.letterTombstones[ev.payload.id] = Number(ev.ts || Date.now());
