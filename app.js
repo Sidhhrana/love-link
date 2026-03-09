@@ -1,5 +1,7 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
+const APP_VERSION = '20260310';
+const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
 const FIREBASE_DEFAULT_CONFIG = {
@@ -155,7 +157,11 @@ function deepMerge(a, b) {
 }
 
 function setupPWA() {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    forceRefreshPWA().finally(() => {
+      navigator.serviceWorker.register(`./sw.js?v=${APP_VERSION}`).catch(() => {});
+    });
+  }
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
@@ -168,6 +174,23 @@ function setupPWA() {
     deferredInstallPrompt = null;
     els.installBtn.classList.add('hidden');
   });
+}
+
+async function forceRefreshPWA() {
+  try {
+    const prev = localStorage.getItem(SW_VERSION_KEY);
+    if (prev === APP_VERSION) return;
+
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k.startsWith('love-link-v')).map((k) => caches.delete(k)));
+    }
+
+    localStorage.setItem(SW_VERSION_KEY, APP_VERSION);
+  } catch {}
 }
 
 function bindAuth() {
@@ -1229,7 +1252,7 @@ async function enableBackgroundAlerts() {
       return;
     }
 
-    const reg = await navigator.serviceWorker.getRegistration() || await navigator.serviceWorker.register('./sw.js');
+    const reg = await navigator.serviceWorker.getRegistration() || await navigator.serviceWorker.register(`./sw.js?v=${APP_VERSION}`);
     const messaging = window.firebase.messaging();
     const token = await messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: reg });
     if (!token) return;
