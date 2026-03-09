@@ -10,7 +10,7 @@
   <title>Love Link</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260310-ux3" />
+  <link rel="stylesheet" href="./styles.css?v=20260310-ux4" />
 </head>
 <body>
   <div class="bg-layer"></div>
@@ -203,6 +203,7 @@
             <span class="chip">Synced</span>
           </div>
           <p class="small">Create reminders for your partner</p>
+          <div class="reminder-stats" id="reminderStats"></div>
           <div class="reminder-compose">
             <input id="reminderTitle" placeholder="Drink water, take a break, call me..." maxlength="60" />
             <div class="row two">
@@ -224,7 +225,16 @@
         <article class="liquid-card card stack">
           <h2>Open-When Letters</h2>
           <input id="letterTitle" placeholder="Open when..." />
+          <div class="row two">
+            <button id="boldLetterBtn" class="btn ghost">Bold</button>
+            <button id="italicLetterBtn" class="btn ghost">Italic</button>
+          </div>
           <textarea id="letterBody" placeholder="Write your message"></textarea>
+          <div class="row two">
+            <input id="letterImageInput" type="file" accept="image/*" class="hidden" />
+            <button id="addLetterImageBtn" class="btn ghost">Attach Photo</button>
+          </div>
+          <p id="letterAttachStatus" class="hint">No photo attached</p>
           <div class="row two">
             <select id="letterLockType">
               <option value="mood">Unlock by mood state</option>
@@ -264,7 +274,7 @@
           <article class="liquid-card card stack wall-card">
             <div class="card-head">
               <h3>Shared Background Wall</h3>
-              <span class="chip">iOS style</span>
+              <span class="chip"></span>
             </div>
             <div class="wall-actions">
               <input id="wallpaperFileInput" type="file" accept="image/*" class="hidden" />
@@ -357,6 +367,29 @@
             <button id="clearLogsBtn" class="btn ghost">Clear Logs</button>
           </div>
           <div id="adminLogsList" class="list"></div>
+
+          <h3>Super Admin</h3>
+          <div class="row two">
+            <button id="replayEventsBtn" class="btn ghost">Replay Last Events</button>
+            <button id="viewDiffBtn" class="btn ghost">View Sync Diff</button>
+          </div>
+          <div class="row two">
+            <button id="pushTestBtn" class="btn ghost">Send Test Push</button>
+            <button id="exportDataBtn" class="btn ghost">Export Data JSON</button>
+          </div>
+          <div class="row two">
+            <input id="importDataInput" type="file" accept="application/json" class="hidden" />
+            <button id="importDataBtn" class="btn ghost">Import Data JSON</button>
+          </div>
+          <div class="row two">
+            <label class="ios-toggle"><input id="flagRemindersToggle" type="checkbox" /><span></span>Reminders</label>
+            <label class="ios-toggle"><input id="flagLettersToggle" type="checkbox" /><span></span>Letters</label>
+          </div>
+          <div class="row two">
+            <label class="ios-toggle"><input id="flagGameToggle" type="checkbox" /><span></span>Game</label>
+            <label class="ios-toggle"><input id="flagWallToggle" type="checkbox" /><span></span>Wall</label>
+          </div>
+          <div id="superAdminOut" class="list"></div>
         </article>
       </section>
     </main>
@@ -370,7 +403,17 @@
     </div>
   </div>
 
+  <div id="letterViewOverlay" class="signal-overlay hidden">
+    <div class="signal-card liquid-card letter-view-card">
+      <h2 id="letterViewTitle">Letter</h2>
+      <p id="letterViewReceipt" class="small"></p>
+      <div id="letterViewMedia" class="letter-media"></div>
+      <div id="letterViewBody" class="small"></div>
+      <button id="closeLetterViewBtn" class="btn primary">Close</button>
+    </div>
+  </div>
+
   <div id="toastHost" class="toast-host"></div>
-  <script src="./app.js?v=20260310-ux3"></script>
+  <script src="./app.js?v=20260310-ux4"></script>
 </body>
 </html>

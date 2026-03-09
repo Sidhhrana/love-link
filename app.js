@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260310-ux3';
+const APP_VERSION = '20260310-ux4';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -16,7 +16,7 @@ const FIREBASE_DEFAULT_CONFIG = {
 
 const defaultState = {
   auth: { loggedIn: false, name: '', role: 'guy', pairCode: '', partnerName: 'Partner' },
-  settings: { anniversary: '', adminCode: 'lovelink-admin', themeOverride: 'auto', notifications: false },
+  settings: { anniversary: '', adminCode: 'lovelink-admin', themeOverride: 'auto', notifications: false, featureFlags: { reminders: true, letters: true, game: true, wall: true } },
   preferences: { focusMode: false, haptics: true, soundCue: false, blur: 18, motion: 1, radius: 24, scale: 1 },
   wallpaper: { imageData: '', blur: 10, dim: 0.34 },
   sync: { firebaseConfig: '', enabled: true, connected: false, lastEventAt: 0, lastNotifiedMissAt: 0 },
@@ -51,6 +51,7 @@ const syncRuntime = {
   profilesListener: null,
   publishTimer: null,
   lastRemoteStateTs: 0,
+  lastRemoteStateData: null,
   seenEventIds: new Set(),
   heartbeatTimer: 0,
   sessionStartedAt: Date.now(),
@@ -97,6 +98,7 @@ let drawerOpen = false;
 let reminderTimer = 0;
 let pendingWallpaperData = '';
 let lastPresenceLogAt = 0;
+let pendingLetterImageData = '';
 
 const els = {
   authScreen: byId('authScreen'), appRoot: byId('appRoot'), roleInput: byId('roleInput'), nameInput: byId('nameInput'),
@@ -113,7 +115,9 @@ const els = {
   addGoalBtn: byId('addGoalBtn'), goalsList: byId('goalsList'), dateTitle: byId('dateTitle'), dateValue: byId('dateValue'),
   addDateBtn: byId('addDateBtn'), datesList: byId('datesList'), calendarTitle: byId('calendarTitle'), calendarGrid: byId('calendarGrid'),
   reminderTitle: byId('reminderTitle'), reminderTime: byId('reminderTime'), reminderRepeat: byId('reminderRepeat'), addReminderBtn: byId('addReminderBtn'), remindersList: byId('remindersList'),
+  reminderStats: byId('reminderStats'),
   letterTitle: byId('letterTitle'), letterBody: byId('letterBody'), letterLockType: byId('letterLockType'), letterLockValue: byId('letterLockValue'),
+  addLetterImageBtn: byId('addLetterImageBtn'), letterImageInput: byId('letterImageInput'), letterAttachStatus: byId('letterAttachStatus'), boldLetterBtn: byId('boldLetterBtn'), italicLetterBtn: byId('italicLetterBtn'),
   addLetterBtn: byId('addLetterBtn'), lettersList: byId('lettersList'), annivInput: byId('annivInput'), partnerNameInput: byId('partnerNameInput'),
   saveSettingsBtn: byId('saveSettingsBtn'), requestNotifBtn: byId('requestNotifBtn'), focusToggle: byId('focusToggle'), hapticToggle: byId('hapticToggle'),
   soundToggle: byId('soundToggle'), blurInput: byId('blurInput'), motionInput: byId('motionInput'), radiusInput: byId('radiusInput'),
@@ -125,8 +129,11 @@ const els = {
   saveFirebaseBtn: byId('saveFirebaseBtn'), connectRealtimeBtn: byId('connectRealtimeBtn'), syncStatusText: byId('syncStatusText'),
   forcePresenceBtn: byId('forcePresenceBtn'), forcePublishStateBtn: byId('forcePublishStateBtn'), refreshDiagBtn: byId('refreshDiagBtn'), copyDiagBtn: byId('copyDiagBtn'),
   diagList: byId('diagList'), logFilterSelect: byId('logFilterSelect'), clearLogsBtn: byId('clearLogsBtn'), adminLogsList: byId('adminLogsList'),
+  replayEventsBtn: byId('replayEventsBtn'), viewDiffBtn: byId('viewDiffBtn'), pushTestBtn: byId('pushTestBtn'), exportDataBtn: byId('exportDataBtn'), importDataBtn: byId('importDataBtn'), importDataInput: byId('importDataInput'),
+  flagRemindersToggle: byId('flagRemindersToggle'), flagLettersToggle: byId('flagLettersToggle'), flagGameToggle: byId('flagGameToggle'), flagWallToggle: byId('flagWallToggle'), superAdminOut: byId('superAdminOut'),
   monitorList: byId('monitorList'), resetConfirmInput: byId('resetConfirmInput'), hardResetBtn: byId('hardResetBtn'), logoutBtn: byId('logoutBtn'), toastHost: byId('toastHost'), signalOverlay: byId('signalOverlay'),
   signalTitle: byId('signalTitle'), signalBody: byId('signalBody'), closeSignalBtn: byId('closeSignalBtn'), miniGame: byId('miniGame'),
+  letterViewOverlay: byId('letterViewOverlay'), letterViewTitle: byId('letterViewTitle'), letterViewReceipt: byId('letterViewReceipt'), letterViewMedia: byId('letterViewMedia'), letterViewBody: byId('letterViewBody'), closeLetterViewBtn: byId('closeLetterViewBtn'),
   startGameBtn: byId('startGameBtn'), pauseGameBtn: byId('pauseGameBtn'), myBestScore: byId('myBestScore'),
   runScore: byId('runScore'), gameLevel: byId('gameLevel'), gameLives: byId('gameLives'), scoreBoard: byId('scoreBoard')
 };
@@ -356,6 +363,7 @@ function bindMain() {
 
   if (els.addReminderBtn) {
     els.addReminderBtn.addEventListener('click', () => {
+      if (!isFeatureEnabled('reminders')) return toast('Reminders are disabled by admin');
       const title = (els.reminderTitle.value || '').trim();
       const time = els.reminderTime.value;
       const repeat = els.reminderRepeat.value || 'none';
@@ -368,7 +376,13 @@ function bindMain() {
         enabled: true,
         senderUid: syncRuntime.authUid || '',
         senderName: state.auth.name || 'Partner',
-        lastFiredOn: ''
+        lastFiredOn: '',
+        lastDueOn: '',
+        lastDoneOn: '',
+        doneCount: 0,
+        skipCount: 0,
+        streak: 0,
+        snoozedUntil: 0
       });
       state.reminders = state.reminders.slice(0, 80);
       els.reminderTitle.value = '';
@@ -390,14 +404,35 @@ function bindMain() {
   });
   els.letterLockType.dispatchEvent(new Event('change'));
 
+  if (els.boldLetterBtn) els.boldLetterBtn.addEventListener('click', () => wrapLetterSelection('**'));
+  if (els.italicLetterBtn) els.italicLetterBtn.addEventListener('click', () => wrapLetterSelection('*'));
+  if (els.addLetterImageBtn && els.letterImageInput) {
+    els.addLetterImageBtn.addEventListener('click', () => els.letterImageInput.click());
+    els.letterImageInput.addEventListener('change', async (ev) => {
+      const file = ev.target.files?.[0];
+      if (!file) return;
+      try {
+        pendingLetterImageData = await compressImageFile(file);
+        if (els.letterAttachStatus) els.letterAttachStatus.textContent = `Attached: ${file.name}`;
+      } catch {
+        toast('Could not attach image');
+      } finally {
+        els.letterImageInput.value = '';
+      }
+    });
+  }
+
   els.addLetterBtn.addEventListener('click', () => {
+    if (!isFeatureEnabled('letters')) return toast('Letters are disabled by admin');
     const title = els.letterTitle.value.trim();
     const body = els.letterBody.value.trim();
     if (!title || !body) return;
-    state.letters.unshift({ id: uid(), title, body, lockType: els.letterLockType.value, lockValue: els.letterLockValue.value.trim(), opened: false });
+    state.letters.unshift({ id: uid(), title, body, imageData: pendingLetterImageData || '', lockType: els.letterLockType.value, lockValue: els.letterLockValue.value.trim(), opened: false, openedAt: 0 });
     els.letterTitle.value = '';
     els.letterBody.value = '';
     els.letterLockValue.value = '';
+    pendingLetterImageData = '';
+    if (els.letterAttachStatus) els.letterAttachStatus.textContent = 'No photo attached';
     state.metrics.saves += 1;
     saveState();
     renderLetters();
@@ -492,6 +527,7 @@ function bindMain() {
     renderScoreBoard();
     renderDiagnostics();
     renderAdminLogs();
+    renderSuperAdminOut();
   });
 
   els.genPairCodeBtn.addEventListener('click', () => {
@@ -557,6 +593,31 @@ function bindMain() {
     });
   }
 
+  if (els.replayEventsBtn) els.replayEventsBtn.addEventListener('click', replayRecentEvents);
+  if (els.viewDiffBtn) els.viewDiffBtn.addEventListener('click', viewSyncDiff);
+  if (els.pushTestBtn) els.pushTestBtn.addEventListener('click', () => {
+    pushDeviceAlert('Love Link Test', 'Admin push test');
+    adminLog('system', 'Push test sent');
+  });
+  if (els.exportDataBtn) els.exportDataBtn.addEventListener('click', exportDataJson);
+  if (els.importDataBtn && els.importDataInput) {
+    els.importDataBtn.addEventListener('click', () => els.importDataInput.click());
+    els.importDataInput.addEventListener('change', importDataJson);
+  }
+  bindFeatureFlagToggles();
+  if (els.closeLetterViewBtn) els.closeLetterViewBtn.addEventListener('click', () => els.letterViewOverlay?.classList.add('hidden'));
+  if (els.letterViewOverlay) {
+    els.letterViewOverlay.addEventListener('click', (ev) => {
+      if (ev.target === els.letterViewOverlay) els.letterViewOverlay.classList.add('hidden');
+    });
+  }
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+      els.signalOverlay?.classList.add('hidden');
+      els.letterViewOverlay?.classList.add('hidden');
+    }
+  });
+
   els.hardResetBtn.addEventListener('click', async () => {
     const phrase = (els.resetConfirmInput.value || '').trim();
     if (phrase !== 'RESET LOVE LINK') {
@@ -612,6 +673,7 @@ function paintFromState() {
   paintHeader();
   applyTheme();
   applyPreferences();
+  applyFeatureFlags();
 
   els.annivInput.value = state.settings.anniversary || '';
   els.partnerNameInput.value = state.auth.partnerName || '';
@@ -629,6 +691,11 @@ function paintFromState() {
   if (els.wallpaperBlurInput) els.wallpaperBlurInput.value = String(state.wallpaper?.blur ?? 10);
   if (els.wallpaperDimInput) els.wallpaperDimInput.value = String(state.wallpaper?.dim ?? 0.34);
   if (els.wallpaperStatus) els.wallpaperStatus.textContent = state.wallpaper?.imageData ? 'Custom wallpaper active' : 'No custom wallpaper selected';
+  if (els.letterAttachStatus) els.letterAttachStatus.textContent = 'No photo attached';
+  if (els.flagRemindersToggle) els.flagRemindersToggle.checked = isFeatureEnabled('reminders');
+  if (els.flagLettersToggle) els.flagLettersToggle.checked = isFeatureEnabled('letters');
+  if (els.flagGameToggle) els.flagGameToggle.checked = isFeatureEnabled('game');
+  if (els.flagWallToggle) els.flagWallToggle.checked = isFeatureEnabled('wall');
   if (els.reminderTime && !els.reminderTime.value) {
     const now = new Date();
     els.reminderTime.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -643,6 +710,7 @@ function paintFromState() {
   renderPulse();
   renderMonitoring();
   renderScoreBoard();
+  renderSuperAdminOut();
   updateSyncUI();
   showScreen(activeScreen);
   setDrawerOpen(drawerOpen, true);
@@ -910,6 +978,92 @@ function updatePresenceUI() {
     els.homePartnerState.textContent = online ? `Online now` : `Last seen ${lastSeen}`;
   }
 }
+
+function isFeatureEnabled(key) {
+  return state.settings?.featureFlags?.[key] !== false;
+}
+
+function applyFeatureFlags() {
+  if (els.flagRemindersToggle) els.flagRemindersToggle.checked = isFeatureEnabled('reminders');
+  if (els.flagLettersToggle) els.flagLettersToggle.checked = isFeatureEnabled('letters');
+  if (els.flagGameToggle) els.flagGameToggle.checked = isFeatureEnabled('game');
+  if (els.flagWallToggle) els.flagWallToggle.checked = isFeatureEnabled('wall');
+  const map = {
+    reminders: 'reminders',
+    letters: 'letters',
+    game: 'game'
+  };
+  for (const [key, tab] of Object.entries(map)) {
+    const btn = els.navTabs?.querySelector(`button[data-tab="${tab}"]`);
+    if (!btn) continue;
+    btn.style.display = isFeatureEnabled(key) ? '' : 'none';
+  }
+  if ((!isFeatureEnabled('reminders') && activeScreen === 'reminders') ||
+      (!isFeatureEnabled('letters') && activeScreen === 'letters') ||
+      (!isFeatureEnabled('game') && activeScreen === 'game')) {
+    showScreen('home');
+  }
+  if (!isFeatureEnabled('wall')) {
+    state.wallpaper.imageData = '';
+    applyWallpaperFromState();
+  }
+}
+
+function bindFeatureFlagToggles() {
+  const pairs = [
+    ['reminders', els.flagRemindersToggle],
+    ['letters', els.flagLettersToggle],
+    ['game', els.flagGameToggle],
+    ['wall', els.flagWallToggle]
+  ];
+  for (const [key, el] of pairs) {
+    if (!el) continue;
+    el.checked = isFeatureEnabled(key);
+    el.addEventListener('change', () => {
+      state.settings.featureFlags[key] = !!el.checked;
+      saveState();
+      applyFeatureFlags();
+      renderSuperAdminOut();
+      emitEvent('feature_flag_update', { key, value: !!el.checked });
+      adminLog('system', `Feature flag ${key} -> ${el.checked ? 'on' : 'off'}`);
+    });
+  }
+}
+
+function renderSuperAdminOut() {
+  if (!els.superAdminOut) return;
+  els.superAdminOut.innerHTML = '';
+  const flags = state.settings.featureFlags || {};
+  const lastEvent = Number(state.sync?.lastEventAt || 0);
+  const logCount = Number(state.admin?.logs?.length || 0);
+  const rows = [
+    `Reminders: ${flags.reminders ? 'enabled' : 'disabled'}`,
+    `Letters: ${flags.letters ? 'enabled' : 'disabled'}`,
+    `Game: ${flags.game ? 'enabled' : 'disabled'}`,
+    `Wall: ${flags.wall ? 'enabled' : 'disabled'}`,
+    `State snapshot: goals ${state.goals.length}, reminders ${state.reminders.length}, letters ${state.letters.length}, dates ${state.dates.length}`,
+    `Last remote event: ${lastEvent ? new Date(lastEvent).toLocaleString() : 'none'}`,
+    `Admin logs stored: ${logCount}`
+  ];
+  rows.forEach((txt) => {
+    const row = document.createElement('div');
+    row.className = 'pill';
+    row.textContent = txt;
+    els.superAdminOut.appendChild(row);
+  });
+}
+
+function wrapLetterSelection(mark) {
+  if (!els.letterBody) return;
+  const ta = els.letterBody;
+  const start = ta.selectionStart ?? ta.value.length;
+  const end = ta.selectionEnd ?? ta.value.length;
+  const selected = ta.value.slice(start, end) || 'text';
+  ta.value = ta.value.slice(0, start) + `${mark}${selected}${mark}` + ta.value.slice(end);
+  ta.focus();
+  ta.selectionStart = start + mark.length;
+  ta.selectionEnd = start + mark.length + selected.length;
+}
 function renderSongs() {
   if (!els.songsList) return;
   els.songsList.innerHTML = '';
@@ -955,22 +1109,45 @@ function renderDates() {
 
 function renderReminders() {
   if (!els.remindersList) return;
+  if (!isFeatureEnabled('reminders')) {
+    if (els.reminderStats) els.reminderStats.innerHTML = '';
+    els.remindersList.innerHTML = '<div class="pill">Reminders disabled by admin</div>';
+    return;
+  }
   els.remindersList.innerHTML = '';
+  const myUid = syncRuntime.authUid || '';
+  const mySet = state.reminders.filter((r) => !r.senderUid || r.senderUid === myUid);
+  const partnerSet = state.reminders.filter((r) => r.senderUid && r.senderUid !== myUid);
+  if (els.reminderStats) {
+    const myDone = mySet.reduce((a, r) => a + Number(r.doneCount || 0), 0);
+    const partnerDone = partnerSet.reduce((a, r) => a + Number(r.doneCount || 0), 0);
+    const bestStreak = state.reminders.reduce((a, r) => Math.max(a, Number(r.streak || 0)), 0);
+    els.reminderStats.innerHTML = `
+      <div class="pill"><span>Your Done</span><strong>${myDone}</strong></div>
+      <div class="pill"><span>Partner Done</span><strong>${partnerDone}</strong></div>
+      <div class="pill"><span>Best Streak</span><strong>${bestStreak}</strong></div>
+    `;
+  }
   state.reminders
     .slice()
     .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')))
     .forEach((r) => {
       const row = document.createElement('div');
       row.className = 'reminder-row';
+      const nextInfo = r.snoozedUntil && r.snoozedUntil > Date.now() ? `Snoozed until ${new Date(r.snoozedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : reminderRepeatLabel(r.repeat);
       row.innerHTML = `
         <div class="reminder-main">
           <div class="reminder-time">${escapeHtml(formatReminderTime(r.time || '00:00'))}</div>
           <div class="reminder-meta">
             <strong>${escapeHtml(r.title)}</strong>
-            <small>${escapeHtml(reminderRepeatLabel(r.repeat))}</small>
+            <small>${escapeHtml(nextInfo)}</small>
+            <small>Streak ${Number(r.streak || 0)} | Done ${Number(r.doneCount || 0)} | Skip ${Number(r.skipCount || 0)}</small>
           </div>
         </div>
         <div class="reminder-actions">
+          <button data-rem-done="${r.id}" class="btn ghost">Done</button>
+          <button data-rem-snooze="${r.id}" class="btn ghost">+10m</button>
+          <button data-rem-skip="${r.id}" class="btn ghost">Skip</button>
           <label class="ios-toggle mini"><input data-rem-toggle="${r.id}" type="checkbox" ${r.enabled ? 'checked' : ''} /><span></span></label>
           <button data-rem-del="${r.id}" class="btn ghost">X</button>
         </div>
@@ -996,6 +1173,9 @@ function renderReminders() {
     renderReminders();
     emitEvent('reminder_delete', { id });
   }));
+  els.remindersList.querySelectorAll('button[data-rem-done]').forEach((btn) => btn.addEventListener('click', () => markReminderDone(btn.dataset.remDone)));
+  els.remindersList.querySelectorAll('button[data-rem-skip]').forEach((btn) => btn.addEventListener('click', () => markReminderSkip(btn.dataset.remSkip)));
+  els.remindersList.querySelectorAll('button[data-rem-snooze]').forEach((btn) => btn.addEventListener('click', () => markReminderSnooze(btn.dataset.remSnooze, 10)));
 }
 
 function reminderRepeatLabel(repeat) {
@@ -1010,6 +1190,56 @@ function formatReminderTime(hhmm) {
   const dt = new Date();
   dt.setHours(h, m, 0, 0);
   return dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function isConsecutiveDay(prevDay, nextDay) {
+  const a = new Date(prevDay + 'T00:00:00').getTime();
+  const b = new Date(nextDay + 'T00:00:00').getTime();
+  return b - a === 86400000;
+}
+
+function markReminderDone(id) {
+  const r = state.reminders.find((x) => x.id === id);
+  if (!r) return;
+  const today = new Date();
+  const dayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  if (r.lastDoneOn && r.lastDoneOn !== dayKey) {
+    r.streak = isConsecutiveDay(r.lastDoneOn, dayKey) ? Number(r.streak || 0) + 1 : 1;
+  } else if (!r.lastDoneOn) {
+    r.streak = 1;
+  }
+  if (r.lastDoneOn !== dayKey) r.doneCount = Number(r.doneCount || 0) + 1;
+  r.lastDoneOn = dayKey;
+  r.lastFiredOn = dayKey;
+  r.snoozedUntil = 0;
+  if (r.repeat === 'none') r.enabled = false;
+  saveState();
+  renderReminders();
+  emitEvent('reminder_done', { id, dayKey, streak: r.streak, doneCount: r.doneCount });
+}
+
+function markReminderSkip(id) {
+  const r = state.reminders.find((x) => x.id === id);
+  if (!r) return;
+  const now = new Date();
+  const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  r.skipCount = Number(r.skipCount || 0) + 1;
+  r.streak = 0;
+  r.lastFiredOn = dayKey;
+  r.snoozedUntil = 0;
+  if (r.repeat === 'none') r.enabled = false;
+  saveState();
+  renderReminders();
+  emitEvent('reminder_skip', { id, dayKey, skipCount: r.skipCount });
+}
+
+function markReminderSnooze(id, mins = 10) {
+  const r = state.reminders.find((x) => x.id === id);
+  if (!r) return;
+  r.snoozedUntil = Date.now() + Math.max(1, mins) * 60000;
+  saveState();
+  renderReminders();
+  emitEvent('reminder_snooze', { id, until: r.snoozedUntil });
 }
 
 function startReminderEngine() {
@@ -1031,6 +1261,7 @@ function reminderAppliesToday(reminder, now) {
 }
 
 function checkRemindersDue() {
+  if (!isFeatureEnabled('reminders')) return;
   if (!state.auth.loggedIn) return;
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, '0');
@@ -1040,8 +1271,11 @@ function checkRemindersDue() {
   let changed = false;
 
   for (const r of state.reminders) {
-    if (!r.enabled || !r.time || r.time !== nowKey) continue;
+    if (!r.enabled || !r.time) continue;
     if (!reminderAppliesToday(r, now)) continue;
+    const dueByTime = r.time === nowKey;
+    const dueBySnooze = Number(r.snoozedUntil || 0) > 0 && Date.now() >= Number(r.snoozedUntil || 0);
+    if (!dueByTime && !dueBySnooze) continue;
     if (r.lastFiredOn === todayKey) continue;
 
     const isOwn = (r.senderUid && r.senderUid === syncRuntime.authUid) || (r.senderName && r.senderName === state.auth.name);
@@ -1052,7 +1286,7 @@ function checkRemindersDue() {
     }
 
     r.lastFiredOn = todayKey;
-    if (r.repeat === 'none') r.enabled = false;
+    if (dueBySnooze) r.snoozedUntil = 0;
     changed = true;
   }
 
@@ -1063,23 +1297,47 @@ function checkRemindersDue() {
 }
 
 function renderLetters() {
+  if (!isFeatureEnabled('letters')) {
+    els.lettersList.innerHTML = '<div class="pill">Letters disabled by admin</div>';
+    return;
+  }
   els.lettersList.innerHTML = '';
   state.letters.forEach((l) => {
     const unlocked = isLetterUnlocked(l);
     const lockInfo = l.lockType === 'time' ? `Unlock at ${l.lockValue || 'not set'}` : `Unlock when mood is ${l.lockValue || 'calm'}`;
+    const receipt = l.openedAt ? `Opened ${new Date(l.openedAt).toLocaleString()}` : 'Unopened';
     const row = document.createElement('div');
     row.className = 'pill';
-    row.innerHTML = `<span>${escapeHtml(l.title)}<br><small>${lockInfo}</small></span><span>${unlocked ? `<button data-open="${l.id}" class="btn primary">Open</button>` : '<small>Locked</small>'} <button data-del="${l.id}" class="btn ghost">X</button></span>`;
+    row.innerHTML = `<span>${escapeHtml(l.title)}<br><small>${lockInfo}</small><br><small>${receipt}</small></span><span>${unlocked ? `<button data-open="${l.id}" class="btn primary">Open</button>` : '<small>Locked</small>'} <button data-del="${l.id}" class="btn ghost">X</button></span>`;
     els.lettersList.appendChild(row);
   });
   els.lettersList.querySelectorAll('button[data-open]').forEach((b) => b.addEventListener('click', (ev) => {
     const l = state.letters.find((x) => x.id === ev.target.dataset.open);
     if (!l) return;
-    alert(`${l.title}\n\n${l.body}`);
+    openLetterView(l);
     l.opened = true;
+    l.openedAt = l.openedAt || Date.now();
     saveState(false);
+    emitEvent('letter_open', { id: l.id, openedAt: l.openedAt });
   }));
   bindDelete(els.lettersList, state.letters, renderLetters, 'letter_delete', 'Delete this letter?');
+}
+
+function formatLetterBody(text) {
+  const src = escapeHtml(text || '');
+  return src
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
+
+function openLetterView(letter) {
+  if (!els.letterViewOverlay) return;
+  els.letterViewTitle.textContent = letter.title || 'Letter';
+  els.letterViewReceipt.textContent = letter.openedAt ? `Opened at ${new Date(letter.openedAt).toLocaleString()}` : 'First open';
+  els.letterViewBody.innerHTML = formatLetterBody(letter.body || '');
+  els.letterViewMedia.innerHTML = letter.imageData ? `<img src="${letter.imageData}" alt="Letter attachment" />` : '';
+  els.letterViewOverlay.classList.remove('hidden');
 }
 
 function isLetterUnlocked(letter) {
@@ -1176,7 +1434,8 @@ function buildDiagnostics() {
       saves: Number(state.metrics.saves || 0),
       reminders: Number(state.reminders?.length || 0),
       goals: Number(state.goals?.length || 0),
-      letters: Number(state.letters?.length || 0)
+      letters: Number(state.letters?.length || 0),
+      flags: structuredClone(state.settings?.featureFlags || {})
     }
   };
 }
@@ -1192,7 +1451,8 @@ function renderDiagnostics() {
     `Partner: ${d.presence.partnerLiveName || state.auth.partnerName || 'Partner'} (${d.presence.partnerOnline ? 'online' : 'offline'})`,
     `Last seen ts: ${d.presence.partnerLastSeenTs || 0}`,
     `Seen events: ${d.sync.seenEvents}`,
-    `Counts: reminders ${d.stats.reminders}, goals ${d.stats.goals}, letters ${d.stats.letters}`
+    `Counts: reminders ${d.stats.reminders}, goals ${d.stats.goals}, letters ${d.stats.letters}`,
+    `Flags: rem ${d.stats.flags.reminders ? 'on' : 'off'}, letters ${d.stats.flags.letters ? 'on' : 'off'}, game ${d.stats.flags.game ? 'on' : 'off'}, wall ${d.stats.flags.wall ? 'on' : 'off'}`
   ];
   for (const line of lines) {
     const row = document.createElement('div');
@@ -1228,6 +1488,101 @@ function adminLog(type, msg, data = null) {
   state.admin.logs = state.admin.logs.slice(0, 240);
   saveState(false);
   if (!els.adminPanel?.classList.contains('hidden')) renderAdminLogs();
+}
+
+async function replayRecentEvents() {
+  if (!syncRuntime.connected || !syncRuntime.roomRef) return toast('Connect realtime first');
+  try {
+    const snap = await syncRuntime.roomRef.child('events').orderByChild('ts').limitToLast(30).get();
+    const list = [];
+    snap.forEach((child) => {
+      const ev = child.val() || {};
+      list.push({
+        id: child.key,
+        ts: Number(ev.ts || 0),
+        type: ev.type || 'unknown',
+        who: ev.senderName || 'Unknown'
+      });
+    });
+    list.sort((a, b) => b.ts - a.ts).forEach((ev) => adminLog('event', `[Replay] ${ev.who}: ${ev.type} @ ${new Date(ev.ts).toLocaleTimeString()}`));
+    toast(`Replayed ${list.length} events`);
+  } catch (err) {
+    toast(`Replay failed: ${String(err.message || err).slice(0, 80)}`);
+  }
+}
+
+function buildSyncDiff() {
+  const remote = syncRuntime.lastRemoteStateData || {};
+  const local = {
+    songs: state.songs,
+    goals: state.goals,
+    dates: state.dates,
+    reminders: state.reminders,
+    letters: state.letters,
+    mood: state.mood,
+    dailyNote: state.dailyNote,
+    game: state.game
+  };
+  const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const diff = [];
+  for (const k of keys) {
+    const a = JSON.stringify(local[k] ?? null);
+    const b = JSON.stringify(remote[k] ?? null);
+    if (a !== b) diff.push({ key: k, localSize: a.length, remoteSize: b.length });
+  }
+  return diff;
+}
+
+function viewSyncDiff() {
+  const diff = buildSyncDiff();
+  if (!els.superAdminOut) return;
+  els.superAdminOut.innerHTML = '';
+  if (!diff.length) {
+    const row = document.createElement('div');
+    row.className = 'pill';
+    row.textContent = 'No diff: local and last remote snapshot match';
+    els.superAdminOut.appendChild(row);
+    return;
+  }
+  diff.forEach((d) => {
+    const row = document.createElement('div');
+    row.className = 'pill';
+    row.textContent = `${d.key}: local ${d.localSize} chars vs remote ${d.remoteSize} chars`;
+    els.superAdminOut.appendChild(row);
+  });
+  adminLog('sync', `Sync diff viewed (${diff.length} keys differ)`);
+}
+
+function exportDataJson() {
+  const payload = structuredClone(state);
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `love-link-export-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  adminLog('system', 'Data exported');
+}
+
+async function importDataJson(ev) {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const merged = deepMerge(structuredClone(defaultState), data);
+    Object.assign(state, merged);
+    saveState();
+    paintFromState();
+    emitEvent('data_import', { by: state.auth.name || 'User' });
+    adminLog('system', 'Data imported');
+    toast('Data imported');
+  } catch (err) {
+    toast(`Import failed: ${String(err.message || err).slice(0, 80)}`);
+  } finally {
+    if (els.importDataInput) els.importDataInput.value = '';
+  }
 }
 
 function renderScoreBoard() {
@@ -1476,7 +1831,7 @@ function publishState() {
       dailyNote: state.dailyNote,
       missLog: state.missLog,
       game: state.game,
-      settings: { anniversary: state.settings.anniversary },
+      settings: { anniversary: state.settings.anniversary, featureFlags: state.settings.featureFlags },
       auth: { partnerName: state.auth.partnerName }
     }
   };
@@ -1612,6 +1967,7 @@ async function connectRealtime() {
 }
 
 function applyRemoteState(data) {
+  syncRuntime.lastRemoteStateData = structuredClone(data || {});
   state.letterTombstones = deepMerge(state.letterTombstones || {}, data.letterTombstones || {});
   state.songs = data.songs || state.songs;
   state.goals = data.goals || state.goals;
@@ -1624,6 +1980,7 @@ function applyRemoteState(data) {
   state.missLog = data.missLog || state.missLog;
   state.game = data.game || state.game;
   state.settings.anniversary = data.settings?.anniversary ?? state.settings.anniversary;
+  state.settings.featureFlags = deepMerge(state.settings.featureFlags || {}, data.settings?.featureFlags || {});
   state.auth.partnerName = data.auth?.partnerName ?? state.auth.partnerName;
 
   saveState(false);
@@ -1638,6 +1995,7 @@ function applyRemoteState(data) {
   applyWallpaperFromState();
   renderScoreBoard();
   renderMonitoring();
+  applyFeatureFlags();
   pulse('Live state updated');
 }
 
@@ -1755,6 +2113,53 @@ function handleRemoteEvent(ev) {
       r.enabled = !!ev.payload.enabled;
       saveState(false);
       renderReminders();
+    }
+  }
+  if (ev.type === 'reminder_done' && ev.payload?.id) {
+    const r = state.reminders.find((x) => x.id === ev.payload.id);
+    if (r) {
+      r.lastDoneOn = ev.payload.dayKey || r.lastDoneOn;
+      r.lastFiredOn = ev.payload.dayKey || r.lastFiredOn;
+      r.doneCount = Number(ev.payload.doneCount ?? r.doneCount ?? 0);
+      r.streak = Number(ev.payload.streak ?? r.streak ?? 0);
+      r.snoozedUntil = 0;
+      if (r.repeat === 'none') r.enabled = false;
+      saveState(false);
+      renderReminders();
+    }
+  }
+  if (ev.type === 'reminder_skip' && ev.payload?.id) {
+    const r = state.reminders.find((x) => x.id === ev.payload.id);
+    if (r) {
+      r.lastFiredOn = ev.payload.dayKey || r.lastFiredOn;
+      r.skipCount = Number(ev.payload.skipCount ?? r.skipCount ?? 0);
+      r.streak = 0;
+      r.snoozedUntil = 0;
+      if (r.repeat === 'none') r.enabled = false;
+      saveState(false);
+      renderReminders();
+    }
+  }
+  if (ev.type === 'reminder_snooze' && ev.payload?.id) {
+    const r = state.reminders.find((x) => x.id === ev.payload.id);
+    if (r) {
+      r.snoozedUntil = Number(ev.payload.until || 0);
+      saveState(false);
+      renderReminders();
+    }
+  }
+  if (ev.type === 'feature_flag_update' && ev.payload?.key) {
+    state.settings.featureFlags[ev.payload.key] = !!ev.payload.value;
+    saveState(false);
+    applyFeatureFlags();
+  }
+  if (ev.type === 'letter_open' && ev.payload?.id) {
+    const l = state.letters.find((x) => x.id === ev.payload.id);
+    if (l) {
+      l.opened = true;
+      l.openedAt = Number(ev.payload.openedAt || l.openedAt || Date.now());
+      saveState(false);
+      renderLetters();
     }
   }
   if (ev.type === 'letter_delete' && ev.payload?.id) {
