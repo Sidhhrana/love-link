@@ -285,6 +285,21 @@ textarea {
   letter-spacing: 0.01em;
 }
 
+.brand-stack {
+  display: grid;
+  gap: 1px;
+}
+
+.presence-chip {
+  font-size: 0.72rem;
+  color: var(--muted);
+  opacity: 0.9;
+}
+
+.presence-chip.online {
+  color: #ccffe8;
+}
+
 .top-actions {
   display: flex;
   align-items: center;
@@ -363,7 +378,7 @@ textarea {
 
 .hero-meta {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 4px;
 }
@@ -558,6 +573,13 @@ textarea {
 .list {
   display: grid;
   gap: 8px;
+}
+
+#diagList,
+#adminLogsList {
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .reminders-clock {

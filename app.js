@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260310-ux2';
+const APP_VERSION = '20260310-ux3';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -31,6 +31,7 @@ const defaultState = {
   dailyNote: '',
   missLog: [],
   pulse: [],
+  admin: { logs: [], logFilter: 'all' },
   game: { bestByUser: {}, lastScore: 0 },
   metrics: { opens: 0, misses: 0, saves: 0 }
 };
@@ -46,11 +47,16 @@ const syncRuntime = {
   authUid: '',
   eventListener: null,
   stateListener: null,
+  presenceListener: null,
+  profilesListener: null,
   publishTimer: null,
   lastRemoteStateTs: 0,
   seenEventIds: new Set(),
   heartbeatTimer: 0,
-  sessionStartedAt: Date.now()
+  sessionStartedAt: Date.now(),
+  partnerOnline: false,
+  partnerLastSeenTs: 0,
+  partnerLiveName: ''
 };
 
 const gameRuntime = {
@@ -90,6 +96,7 @@ let menuAnimating = false;
 let drawerOpen = false;
 let reminderTimer = 0;
 let pendingWallpaperData = '';
+let lastPresenceLogAt = 0;
 
 const els = {
   authScreen: byId('authScreen'), appRoot: byId('appRoot'), roleInput: byId('roleInput'), nameInput: byId('nameInput'),
@@ -98,7 +105,7 @@ const els = {
   menuBtn: byId('menuBtn'), sideMenu: byId('sideMenu'), menuCloseBtn: byId('menuCloseBtn'), menuBackdrop: byId('menuBackdrop'),
   drawerToggleBtn: byId('drawerToggleBtn'), homeDrawer: byId('homeDrawer'), homeDrawerHandle: byId('homeDrawerHandle'),
   vibePingBtn: byId('vibePingBtn'), missStatus: byId('missStatus'), moodLabel: byId('moodLabel'), moodText: byId('moodText'),
-  homeNoteState: byId('homeNoteState'), homeMoodState: byId('homeMoodState'),
+  homeNoteState: byId('homeNoteState'), homeMoodState: byId('homeMoodState'), homePartnerState: byId('homePartnerState'), presenceStatus: byId('presenceStatus'),
   moodSlider: byId('moodSlider'), partnerAvatar: byId('partnerAvatar'), partnerRing: byId('partnerRing'),
   daysTogether: byId('daysTogether'), sinceText: byId('sinceText'), dailyPrompt: byId('dailyPrompt'), savePromptBtn: byId('savePromptBtn'),
   promptSaved: byId('promptSaved'), pulseList: byId('pulseList'), navTabs: byId('navTabs'), songTitle: byId('songTitle'),
@@ -116,6 +123,8 @@ const els = {
   newPairCode: byId('newPairCode'), genPairCodeBtn: byId('genPairCodeBtn'), newAdminCode: byId('newAdminCode'), saveAdminCodeBtn: byId('saveAdminCodeBtn'),
   themeOverride: byId('themeOverride'), applyThemeBtn: byId('applyThemeBtn'), firebaseConfigInput: byId('firebaseConfigInput'),
   saveFirebaseBtn: byId('saveFirebaseBtn'), connectRealtimeBtn: byId('connectRealtimeBtn'), syncStatusText: byId('syncStatusText'),
+  forcePresenceBtn: byId('forcePresenceBtn'), forcePublishStateBtn: byId('forcePublishStateBtn'), refreshDiagBtn: byId('refreshDiagBtn'), copyDiagBtn: byId('copyDiagBtn'),
+  diagList: byId('diagList'), logFilterSelect: byId('logFilterSelect'), clearLogsBtn: byId('clearLogsBtn'), adminLogsList: byId('adminLogsList'),
   monitorList: byId('monitorList'), resetConfirmInput: byId('resetConfirmInput'), hardResetBtn: byId('hardResetBtn'), logoutBtn: byId('logoutBtn'), toastHost: byId('toastHost'), signalOverlay: byId('signalOverlay'),
   signalTitle: byId('signalTitle'), signalBody: byId('signalBody'), closeSignalBtn: byId('closeSignalBtn'), miniGame: byId('miniGame'),
   startGameBtn: byId('startGameBtn'), pauseGameBtn: byId('pauseGameBtn'), myBestScore: byId('myBestScore'),
@@ -481,6 +490,8 @@ function bindMain() {
     renderPulse();
     renderMonitoring();
     renderScoreBoard();
+    renderDiagnostics();
+    renderAdminLogs();
   });
 
   els.genPairCodeBtn.addEventListener('click', () => {
@@ -513,6 +524,38 @@ function bindMain() {
   });
 
   els.connectRealtimeBtn.addEventListener('click', connectRealtime);
+  if (els.forcePresenceBtn) els.forcePresenceBtn.addEventListener('click', () => {
+    publishPresence();
+    toast('Presence ping sent');
+  });
+  if (els.forcePublishStateBtn) els.forcePublishStateBtn.addEventListener('click', () => {
+    publishState();
+    toast('State published');
+  });
+  if (els.refreshDiagBtn) els.refreshDiagBtn.addEventListener('click', renderDiagnostics);
+  if (els.copyDiagBtn) els.copyDiagBtn.addEventListener('click', async () => {
+    const payload = buildDiagnostics();
+    try {
+      await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
+      toast('Diagnostics copied');
+    } catch {
+      toast('Could not copy diagnostics');
+    }
+  });
+  if (els.logFilterSelect) {
+    els.logFilterSelect.addEventListener('change', () => {
+      state.admin.logFilter = els.logFilterSelect.value || 'all';
+      saveState(false);
+      renderAdminLogs();
+    });
+  }
+  if (els.clearLogsBtn) {
+    els.clearLogsBtn.addEventListener('click', () => {
+      state.admin.logs = [];
+      saveState(false);
+      renderAdminLogs();
+    });
+  }
 
   els.hardResetBtn.addEventListener('click', async () => {
     const phrase = (els.resetConfirmInput.value || '').trim();
@@ -609,9 +652,10 @@ function paintFromState() {
 
 function paintHeader() {
   const n = state.auth.name || 'You';
-  const p = state.auth.partnerName || 'Partner';
+  const p = syncRuntime.partnerLiveName || state.auth.partnerName || 'Partner';
   els.brandTitle.textContent = `${n} + ${p}`;
   els.partnerAvatar.textContent = p[0]?.toUpperCase() || 'P';
+  updatePresenceUI();
 }
 
 function showScreen(tab) {
@@ -850,6 +894,21 @@ function renderHomeBits() {
   }
   if (els.homeNoteState) els.homeNoteState.textContent = state.dailyNote ? 'Saved' : 'Not saved';
   renderMood();
+  updatePresenceUI();
+}
+
+function updatePresenceUI() {
+  const partnerName = syncRuntime.partnerLiveName || state.auth.partnerName || 'Partner';
+  const online = !!syncRuntime.partnerOnline;
+  const lastSeen = syncRuntime.partnerLastSeenTs ? new Date(syncRuntime.partnerLastSeenTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'never';
+  if (els.partnerNameInput && document.activeElement !== els.partnerNameInput) els.partnerNameInput.value = partnerName;
+  if (els.presenceStatus) {
+    els.presenceStatus.textContent = online ? `${partnerName} online` : `${partnerName} last seen ${lastSeen}`;
+    els.presenceStatus.classList.toggle('online', online);
+  }
+  if (els.homePartnerState) {
+    els.homePartnerState.textContent = online ? `Online now` : `Last seen ${lastSeen}`;
+  }
 }
 function renderSongs() {
   if (!els.songsList) return;
@@ -1076,7 +1135,8 @@ function renderMonitoring() {
     `Latest miss: ${latestMiss}`,
     `Pair code: ${state.auth.pairCode || '-'}`,
     `Realtime: ${syncRuntime.connected ? 'connected' : 'offline'}`,
-    `UID: ${syncRuntime.authUid || 'n/a'}`
+    `UID: ${syncRuntime.authUid || 'n/a'}`,
+    `Partner status: ${syncRuntime.partnerOnline ? 'online' : 'offline'}`
   ];
   items.forEach((t) => {
     const row = document.createElement('div');
@@ -1084,6 +1144,90 @@ function renderMonitoring() {
     row.textContent = t;
     els.monitorList.appendChild(row);
   });
+  renderDiagnostics();
+  renderAdminLogs();
+}
+
+function buildDiagnostics() {
+  const room = (state.auth.pairCode || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return {
+    now: new Date().toISOString(),
+    appVersion: APP_VERSION,
+    auth: {
+      uid: syncRuntime.authUid || '',
+      name: state.auth.name || '',
+      partnerName: state.auth.partnerName || ''
+    },
+    sync: {
+      connected: !!syncRuntime.connected,
+      room,
+      lastEventAt: Number(state.sync.lastEventAt || 0),
+      seenEvents: Number(syncRuntime.seenEventIds?.size || 0),
+      heartbeatActive: !!syncRuntime.heartbeatTimer
+    },
+    presence: {
+      partnerOnline: !!syncRuntime.partnerOnline,
+      partnerLastSeenTs: Number(syncRuntime.partnerLastSeenTs || 0),
+      partnerLiveName: syncRuntime.partnerLiveName || ''
+    },
+    stats: {
+      opens: Number(state.metrics.opens || 0),
+      misses: Number(state.metrics.misses || 0),
+      saves: Number(state.metrics.saves || 0),
+      reminders: Number(state.reminders?.length || 0),
+      goals: Number(state.goals?.length || 0),
+      letters: Number(state.letters?.length || 0)
+    }
+  };
+}
+
+function renderDiagnostics() {
+  if (!els.diagList) return;
+  const d = buildDiagnostics();
+  els.diagList.innerHTML = '';
+  const lines = [
+    `Version: ${d.appVersion}`,
+    `Room: ${d.sync.room || '-'}`,
+    `Connected: ${d.sync.connected ? 'yes' : 'no'}`,
+    `Partner: ${d.presence.partnerLiveName || state.auth.partnerName || 'Partner'} (${d.presence.partnerOnline ? 'online' : 'offline'})`,
+    `Last seen ts: ${d.presence.partnerLastSeenTs || 0}`,
+    `Seen events: ${d.sync.seenEvents}`,
+    `Counts: reminders ${d.stats.reminders}, goals ${d.stats.goals}, letters ${d.stats.letters}`
+  ];
+  for (const line of lines) {
+    const row = document.createElement('div');
+    row.className = 'pill';
+    row.textContent = line;
+    els.diagList.appendChild(row);
+  }
+}
+
+function renderAdminLogs() {
+  if (!els.adminLogsList) return;
+  const filter = state.admin?.logFilter || 'all';
+  if (els.logFilterSelect && els.logFilterSelect.value !== filter) els.logFilterSelect.value = filter;
+  const logs = (state.admin?.logs || []).filter((l) => filter === 'all' || l.type === filter);
+  els.adminLogsList.innerHTML = '';
+  logs.slice(0, 120).forEach((l) => {
+    const row = document.createElement('div');
+    row.className = 'pill';
+    row.innerHTML = `<span>[${escapeHtml(l.type)}] ${escapeHtml(l.msg)}</span><small>${new Date(l.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>`;
+    els.adminLogsList.appendChild(row);
+  });
+}
+
+function adminLog(type, msg, data = null) {
+  if (!state.admin) state.admin = { logs: [], logFilter: 'all' };
+  state.admin.logs.unshift({
+    id: uid(),
+    ts: Date.now(),
+    type: String(type || 'system'),
+    msg: String(msg || ''),
+    data: data || null
+  });
+  state.admin.logs = state.admin.logs.slice(0, 240);
+  saveState(false);
+  if (!els.adminPanel?.classList.contains('hidden')) renderAdminLogs();
 }
 
 function renderScoreBoard() {
@@ -1341,6 +1485,7 @@ function publishState() {
 
 function emitEvent(type, payload = {}) {
   pulse(`${state.auth.name} ${type.replace('_', ' ')}`);
+  adminLog('event', `Emit ${type}`, payload);
   if (!syncRuntime.connected || !syncRuntime.roomRef || !syncRuntime.authUid) return;
   syncRuntime.roomRef.child('events').push({
     type,
@@ -1397,6 +1542,53 @@ async function connectRealtime() {
       applyRemoteState(remote.data);
     });
 
+    syncRuntime.presenceListener = syncRuntime.roomRef.child('presence').on('value', (snap) => {
+      const data = snap.val() || {};
+      const now = Date.now();
+      let bestTs = 0;
+      let bestName = '';
+      for (const [uid, p] of Object.entries(data)) {
+        if (uid === syncRuntime.authUid) continue;
+        const ts = Number(p?.ts || 0);
+        if (ts > bestTs) {
+          bestTs = ts;
+          bestName = String(p?.name || '');
+        }
+      }
+      syncRuntime.partnerLastSeenTs = bestTs || syncRuntime.partnerLastSeenTs || 0;
+      syncRuntime.partnerOnline = !!bestTs && now - bestTs < 45000;
+      if (bestName) syncRuntime.partnerLiveName = bestName;
+      if (bestName && bestName !== state.auth.partnerName) {
+        state.auth.partnerName = bestName;
+        saveState(false);
+      }
+      updatePresenceUI();
+      paintHeader();
+    });
+
+    syncRuntime.profilesListener = syncRuntime.roomRef.child('profiles').on('value', (snap) => {
+      const data = snap.val() || {};
+      let latestName = '';
+      let latestAt = 0;
+      for (const [uid, p] of Object.entries(data)) {
+        if (uid === syncRuntime.authUid) continue;
+        const updatedAt = Number(p?.updatedAt || 0);
+        if (updatedAt >= latestAt && p?.name) {
+          latestAt = updatedAt;
+          latestName = String(p.name);
+        }
+      }
+      if (latestName) {
+        syncRuntime.partnerLiveName = latestName;
+        if (latestName !== state.auth.partnerName) {
+          state.auth.partnerName = latestName;
+          saveState(false);
+        }
+        paintHeader();
+        updatePresenceUI();
+      }
+    });
+
     syncRuntime.connected = true;
     state.sync.connected = true;
     saveState(false);
@@ -1404,7 +1596,9 @@ async function connectRealtime() {
     renderMonitoring();
     toast('Realtime connected');
     pulse('Realtime connected');
+    adminLog('sync', 'Realtime connected', { uid: syncRuntime.authUid });
     publishPresence();
+    publishProfile();
     startHeartbeat();
     await enableBackgroundAlerts();
     publishState();
@@ -1467,6 +1661,18 @@ function publishPresence() {
     name: state.auth.name || 'User',
     tabId
   }).catch(() => {});
+  if (Date.now() - lastPresenceLogAt > 60000) {
+    lastPresenceLogAt = Date.now();
+    adminLog('presence', 'Presence heartbeat');
+  }
+}
+
+function publishProfile() {
+  if (!syncRuntime.connected || !syncRuntime.roomRef || !syncRuntime.authUid) return;
+  syncRuntime.roomRef.child(`profiles/${syncRuntime.authUid}`).set({
+    name: state.auth.name || 'User',
+    updatedAt: Date.now()
+  }).catch(() => {});
 }
 
 async function wipeRemoteRoomData() {
@@ -1499,16 +1705,23 @@ function disconnectRealtimeListeners() {
   if (!syncRuntime.roomRef) return;
   if (syncRuntime.eventListener) syncRuntime.roomRef.child('events').off('child_added', syncRuntime.eventListener);
   if (syncRuntime.stateListener) syncRuntime.roomRef.child('state').off('value', syncRuntime.stateListener);
+  if (syncRuntime.presenceListener) syncRuntime.roomRef.child('presence').off('value', syncRuntime.presenceListener);
+  if (syncRuntime.profilesListener) syncRuntime.roomRef.child('profiles').off('value', syncRuntime.profilesListener);
   syncRuntime.eventListener = null;
   syncRuntime.stateListener = null;
+  syncRuntime.presenceListener = null;
+  syncRuntime.profilesListener = null;
 }
 
 function disconnectRealtime() {
   disconnectRealtimeListeners();
   syncRuntime.connected = false;
+  syncRuntime.partnerOnline = false;
   state.sync.connected = false;
   stopHeartbeat();
+  updatePresenceUI();
   updateSyncUI();
+  adminLog('sync', 'Realtime disconnected');
 }
 function handleRemoteEvent(ev) {
   const ts = Number(ev.ts || Date.now());
@@ -1554,6 +1767,7 @@ function handleRemoteEvent(ev) {
     }
   }
   pulse(`${who}: ${ev.type.replace('_', ' ')}`);
+  adminLog('event', `Recv ${ev.type} from ${who}`, ev.payload || null);
   renderMonitoring();
 }
 
@@ -1644,6 +1858,7 @@ async function registerPushToken(token) {
 function pulse(text) {
   state.pulse.unshift({ text, ts: Date.now() });
   state.pulse = state.pulse.slice(0, 40);
+  if (typeof text === 'string' && text.trim()) adminLog('system', text);
   saveState(false);
   renderPulse();
 }

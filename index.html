@@ -10,7 +10,7 @@
   <title>Love Link</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260310-ux2" />
+  <link rel="stylesheet" href="./styles.css?v=20260310-ux3" />
 </head>
 <body>
   <div class="bg-layer"></div>
@@ -63,7 +63,10 @@
         </button>
         <div class="brand">
           <div class="app-mark small">LL</div>
-          <span id="brandTitle">Love Link</span>
+          <div class="brand-stack">
+            <span id="brandTitle">Love Link</span>
+            <small id="presenceStatus" class="presence-chip">Partner offline</small>
+          </div>
         </div>
         <div class="top-actions">
           <span id="syncBadge" class="badge">Offline</span>
@@ -90,6 +93,10 @@
             <div class="meta-pill">
               <span>Mood Sync</span>
               <strong id="homeMoodState">Balanced</strong>
+            </div>
+            <div class="meta-pill">
+              <span>Partner</span>
+              <strong id="homePartnerState">Offline</strong>
             </div>
           </div>
           <button id="drawerToggleBtn" class="drawer-arrow" aria-label="Open drawer">⌄</button>
@@ -326,6 +333,30 @@
 
           <h3>Monitoring</h3>
           <div id="monitorList" class="list"></div>
+
+          <h3>Admin Controls</h3>
+          <div class="row two">
+            <button id="forcePresenceBtn" class="btn ghost">Force Presence Ping</button>
+            <button id="forcePublishStateBtn" class="btn ghost">Force State Publish</button>
+          </div>
+          <div class="row two">
+            <button id="refreshDiagBtn" class="btn ghost">Refresh Diagnostics</button>
+            <button id="copyDiagBtn" class="btn ghost">Copy Diagnostics JSON</button>
+          </div>
+          <div id="diagList" class="list"></div>
+
+          <h3>Event Logs</h3>
+          <div class="row two">
+            <select id="logFilterSelect">
+              <option value="all">All logs</option>
+              <option value="sync">Sync only</option>
+              <option value="presence">Presence only</option>
+              <option value="event">Events only</option>
+              <option value="system">System only</option>
+            </select>
+            <button id="clearLogsBtn" class="btn ghost">Clear Logs</button>
+          </div>
+          <div id="adminLogsList" class="list"></div>
         </article>
       </section>
     </main>
@@ -340,6 +371,6 @@
   </div>
 
   <div id="toastHost" class="toast-host"></div>
-  <script src="./app.js?v=20260310-ux2"></script>
+  <script src="./app.js?v=20260310-ux3"></script>
 </body>
 </html>
