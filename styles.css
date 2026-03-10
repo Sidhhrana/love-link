@@ -43,7 +43,17 @@ body {
     radial-gradient(900px 520px at 120% 112%, rgba(255, 159, 199, 0.3), transparent 54%),
     linear-gradient(165deg, var(--bg1), var(--bg2));
   overflow-x: hidden;
+  overflow-y: auto;
   background-position: center;
+}
+
+@supports (-webkit-touch-callout: none) {
+  html, body {
+    height: 100%;
+  }
+  body {
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .bg-layer {
@@ -55,6 +65,7 @@ body {
   filter: blur(52px);
   background: conic-gradient(from 180deg at 30% 20%, #ffffff14, #72b8ff12, #ffb4d512, #ffffff14);
   transform: none;
+  display: none;
 }
 
 .wallpaper-layer {
@@ -79,6 +90,12 @@ body {
   transform: scale(var(--scale));
   transform-origin: top center;
   transition: transform calc(0.2s * var(--motion)) ease;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    min-height: 100%;
+  }
 }
 
 .hidden { display: none !important; }
@@ -492,6 +509,10 @@ textarea {
   transition: max-height calc(0.28s * var(--motion)) cubic-bezier(.2,.7,.2,1), opacity calc(0.22s * var(--motion)) ease;
 }
 
+.home-drawer.dragging {
+  transition: none;
+}
+
 .home-drawer.closed {
   max-height: 32px;
   opacity: 0.92;
@@ -511,6 +532,12 @@ textarea {
   border-radius: 999px;
   margin: 4px auto 10px;
   background: rgba(255, 255, 255, 0.36);
+  position: relative;
+  overflow: hidden;
+}
+
+.drawer-handle.dragging {
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.08);
 }
 
 .card {
@@ -963,6 +990,7 @@ body.perf .bg-layer {
   animation: none;
   filter: blur(26px);
   transform: none;
+  display: none;
 }
 
 body.perf .wallpaper-layer {
@@ -1071,7 +1099,7 @@ body.has-wallpaper .bg-layer {
 @media (max-width: 760px) {
   .row.two { grid-template-columns: 1fr; }
   .nav { grid-template-columns: repeat(3, 1fr); }
-  .shell { padding: 12px 12px calc(114px + env(safe-area-inset-bottom)); }
+  .shell { padding: 12px 12px calc(64px + env(safe-area-inset-bottom)); }
   .toast-host {
     left: 12px;
     right: 12px;

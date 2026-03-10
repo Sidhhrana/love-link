@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260310-ux5';
+const APP_VERSION = '20260310-ux6';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -763,34 +763,65 @@ function bindShellLayout() {
 
   setDrawerOpen(false, true);
   let dragStartY = 0;
+  let dragLastY = 0;
+  let dragStartTs = 0;
   let dragging = false;
+  let baseOpen = false;
+
+  const shouldIgnoreDrag = (ev) => !!ev.target.closest('input, textarea, select, button, a');
 
   const onPointerMove = (ev) => {
     if (!dragging) return;
-    const currentY = ev.clientY ?? (ev.touches?.[0]?.clientY ?? dragStartY);
+    const currentY = ev.clientY ?? (ev.touches?.[0]?.clientY ?? dragLastY);
+    dragLastY = currentY;
     const dy = currentY - dragStartY;
-    if (Math.abs(dy) < 8) return;
-    els.homeDrawer.classList.toggle('peek', dy > 0);
+    const maxPull = 120;
+    let visual = 0;
+    if (baseOpen) {
+      visual = dy > 0 ? Math.min(dy * 0.55, maxPull) : dy * 0.15;
+    } else {
+      visual = dy < 0 ? Math.max(dy * 0.55, -maxPull) : dy * 0.15;
+    }
+    els.homeDrawer.style.transform = `translateY(${visual}px)`;
   };
 
   const onPointerUp = (ev) => {
     if (!dragging) return;
     dragging = false;
-    els.homeDrawer.classList.remove('peek');
-    const endY = ev.clientY ?? (ev.changedTouches?.[0]?.clientY ?? dragStartY);
+    els.homeDrawer.classList.remove('dragging');
+    els.homeDrawerHandle.classList.remove('dragging');
+    els.homeDrawer.style.transform = '';
+    const endY = ev.clientY ?? (ev.changedTouches?.[0]?.clientY ?? dragLastY);
     const dy = endY - dragStartY;
-    if (dy > 32) setDrawerOpen(false);
-    else if (dy < -32) setDrawerOpen(true);
+    const dt = Math.max(0.01, (performance.now() - dragStartTs) / 1000);
+    const velocity = dy / dt;
+    if (baseOpen) {
+      if (dy > 42 || velocity > 420) setDrawerOpen(false);
+      else setDrawerOpen(true);
+    } else {
+      if (dy < -42 || velocity < -420) setDrawerOpen(true);
+      else setDrawerOpen(false);
+    }
     document.removeEventListener('pointermove', onPointerMove);
     document.removeEventListener('pointerup', onPointerUp);
   };
 
-  els.homeDrawerHandle.addEventListener('pointerdown', (ev) => {
-    dragStartY = ev.clientY;
+  const beginDrag = (ev) => {
+    if (shouldIgnoreDrag(ev)) return;
+    dragStartY = ev.clientY ?? 0;
+    dragLastY = dragStartY;
+    dragStartTs = performance.now();
     dragging = true;
+    baseOpen = drawerOpen;
+    els.homeDrawer.classList.add('dragging');
+    els.homeDrawerHandle.classList.add('dragging');
     document.addEventListener('pointermove', onPointerMove);
     document.addEventListener('pointerup', onPointerUp);
-  });
+    ev.preventDefault();
+  };
+
+  els.homeDrawerHandle.addEventListener('pointerdown', beginDrag);
+  els.homeDrawer.addEventListener('pointerdown', beginDrag);
 }
 
 function setDrawerOpen(open, immediate = false) {
