@@ -1,4 +1,4 @@
-const APP_VERSION = '20260310-ux7';
+const APP_VERSION = '20260310-ux8';
 const CACHE_NAME = `love-link-v${APP_VERSION}`;
 const ASSETS = [
   './',

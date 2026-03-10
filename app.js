@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260310-ux7';
+const APP_VERSION = '20260310-ux8';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -945,9 +945,29 @@ function applyTheme() {
   document.body.classList.toggle('role-girl', role === 'girl');
   document.body.classList.toggle('role-guy', role !== 'girl');
   if (role === 'girl') {
-    setVars({ '--bg1': '#230d19', '--bg2': '#41172d', '--glass': 'rgba(77, 31, 53, .50)', '--accent': '#ff97c5', '--accent2': '#ffd7e9', '--muted': '#ffd7e8', '--glow': 'rgba(255, 151, 197, .58)' });
+    setVars({
+      '--bg1': '#f7f8fb',
+      '--bg2': '#eef1f7',
+      '--text': '#121722',
+      '--muted': '#5f6b7a',
+      '--glass': 'rgba(255, 255, 255, 0.72)',
+      '--line': 'rgba(18, 22, 30, 0.08)',
+      '--accent': '#ff8fbd',
+      '--accent2': '#ffd3e5',
+      '--glow': 'rgba(255, 143, 189, .45)'
+    });
   } else {
-    setVars({ '--bg1': '#060d1f', '--bg2': '#10274d', '--glass': 'rgba(18, 34, 62, .48)', '--accent': '#61b2ff', '--accent2': '#9bd8ff', '--muted': '#a6bbdd', '--glow': 'rgba(97, 178, 255, .55)' });
+    setVars({
+      '--bg1': '#f5f7fb',
+      '--bg2': '#eef3fb',
+      '--text': '#121722',
+      '--muted': '#5f6b7a',
+      '--glass': 'rgba(255, 255, 255, 0.72)',
+      '--line': 'rgba(18, 22, 30, 0.08)',
+      '--accent': '#4aa3ff',
+      '--accent2': '#b7ddff',
+      '--glow': 'rgba(74, 163, 255, .45)'
+    });
   }
 }
 
