@@ -1,0 +1,139 @@
+Love Link - Project Context (Mar 10, 2026)
+========================================
+
+Goal
+----
+Single-page HTML/CSS/JS PWA for long-distance couples. Installable on iOS/Android (Add to Home Screen). Realtime sync, notifications, and an Apple-like liquid-glass UI that runs well on phones.
+
+Core Features (Current)
+-----------------------
+1. Miss Signal
+   - Large circular "I MISS YOU" button sends realtime event + optional push.
+   - Shows overlay + haptic + sound on receiver.
+
+2. Mood Sync
+   - Single slider (0-100) with mood labels + ring glow.
+   - Synced across devices.
+
+3. Relationship Streak + Daily Note
+   - Days together based on anniversary date.
+   - Daily note saved and synced.
+
+4. Our Songs (Spotify embed)
+   - Playlist iframe + open link.
+
+5. Goals + Important Dates (with calendar grid)
+   - CRUD goals + dates; calendar highlights date entries.
+
+6. Reminders v2
+   - Reminder creation with time + repeat (once/daily/weekdays/weekends).
+   - Done / Skip / Snooze (+10m), streaks, done/skip counts.
+   - Stats header (your done, partner done, best streak).
+
+7. Open-When Letters v2
+   - Title/body, optional photo attachment (base64).
+   - Unlock by mood or by datetime.
+   - Open receipts with overlay view (no alert popups).
+
+8. Mini Game (Ping Pong)
+   - Canvas game with increasing difficulty + scores synced.
+
+9. Shared Wallpaper
+   - Upload photo, set blur + dim, apply to both devices.
+
+10. Admin Super Panel
+   - Pair code generation, admin code updates, theme override.
+   - Realtime connect, diagnostics, logs.
+   - Replay events, view sync diff, export/import JSON.
+   - Feature flags: Reminders/Letters/Game/Wall.
+   - Hard reset with double confirm + optional cloud wipe.
+
+Architecture
+------------
+Single static app. No build system.
+- index.html: UI layout and screens.
+- styles.css: Apple-like glass UI, animations, mobile styling.
+- app.js: All logic, state, Firebase sync, push, UI events.
+- sw.js: PWA cache + push notifications.
+- manifest.webmanifest + icons/: PWA metadata/icons.
+
+Realtime & Push
+---------------
+Firebase Realtime Database + Anonymous Auth.
+Events + shared state:
+- rooms/{pairCode}/state: full synced state.
+- rooms/{pairCode}/events: event stream (miss, updates, deletes).
+- rooms/{pairCode}/presence, profiles: online + partner name.
+Push:
+- FCM VAPID key embedded in app.js (FCM_VAPID_KEY).
+- Tokens stored in roomTokens/{room}/{uid}/{token}.
+- sw.js handles push -> showNotification.
+
+State Model (app.js defaultState)
+---------------------------------
+- auth: loggedIn, name, role, pairCode, partnerName
+- settings: anniversary, adminCode, themeOverride, notifications, featureFlags
+- preferences: focusMode, haptics, soundCue, perfMode, blur, motion, radius, scale
+- wallpaper: imageData, blur, dim
+- sync: firebaseConfig, enabled, connected, lastEventAt, lastNotifiedMissAt
+- push: token
+- songs, goals, dates, reminders, letters, letterTombstones
+- mood, dailyNote, missLog, pulse
+- admin logs + filter
+- game state + metrics
+
+Recent Performance Work (Mar 2026)
+-----------------------------------
+- Removed tilt/axis background motion (disabled motion loop).
+- Disabled animated background layer (bg-layer) to reduce GPU load.
+- Simplified wallpaper transforms (static scale).
+- Added Performance Mode (settings) that reduces blur, shadows, motion.
+- Reduced reminders timer to 30s.
+- Added drag/velocity drawer pull with friction (iOS feel).
+- Fixed mobile extra scroll band by adjusting shell padding and overflow.
+- Cache version bumps to prevent stale GitHub Pages assets (APP_VERSION).
+
+Key UX/Behavior Notes
+---------------------
+- Drawer: drag handle or drawer itself, friction + velocity snapping.
+- Letters: delete uses tombstones to avoid reappearing on sync.
+- Miss signals: only show if event is fresh and not already notified.
+- Feature flags hide tabs and auto-return to Home if disabled.
+- When wallpaper is present, bg-layer is hidden.
+
+Files You’ll Touch Most
+-----------------------
+1) app.js
+   - UI bindings, state, Firebase, push, game loop, reminders/letters logic.
+   - PWA cache refresh logic in setupPWA/forceRefreshPWA.
+2) styles.css
+   - Glass UI, animations, mobile layout.
+   - Performance Mode styles: body.perf.
+3) index.html
+   - All sections/screens, admin panel, overlays.
+4) sw.js
+   - Cache name/version, push handling.
+
+Known Constraints / Potential Issues
+------------------------------------
+- Heavy payloads: wallpaper + letter images are base64 in RTDB (quota risk).
+- Full state publish still includes large objects.
+- Some animations remain (breathe/gleam). If phone still lags, reduce further.
+- Notifications on iOS behave differently due to PWA limitations.
+
+If You Need to Optimize Further
+-------------------------------
+1) Move images to Firebase Storage and store URLs in RTDB.
+2) Remove remaining blur/backdrop-filter on low-end devices.
+3) Throttle CSS animations (or set prefers-reduced-motion).
+4) Limit max base64 image size in compressImageFile.
+
+Versioning
+----------
+APP_VERSION currently: 20260310-ux6
+Update in app.js, sw.js, index.html to force cache refresh.
+
+Deployment
+----------
+Static hosting on GitHub Pages. PWA uses service worker cache (sw.js).
+If new deploy shows old UI, bump APP_VERSION.

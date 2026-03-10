@@ -1022,6 +1022,37 @@ body.perf * {
   animation-duration: 0.12s !important;
 }
 
+body.mobile .shell {
+  transform: none;
+}
+
+body.mobile .liquid-card {
+  backdrop-filter: none;
+  box-shadow: 0 10px 22px rgba(5, 12, 25, 0.26);
+  background: rgba(12, 20, 38, 0.7);
+}
+
+body.mobile .liquid-card::after {
+  display: none;
+}
+
+body.mobile .menu-backdrop,
+body.mobile .signal-overlay {
+  backdrop-filter: none;
+}
+
+body.mobile .hero-orbit,
+body.mobile .miss-btn-circle::after,
+body.mobile .miss-btn::before {
+  display: none;
+}
+
+body.mobile .btn,
+body.mobile .menu-nav button,
+body.mobile .drawer-arrow {
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
 @keyframes reveal {
   to {
     opacity: 1;

@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260310-ux6';
+const APP_VERSION = '20260310-ux7';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -869,8 +869,14 @@ function detectAutoPerf() {
   return !!reduced || (mem && mem <= 4) || (cores && cores <= 4);
 }
 
+function isMobileDevice() {
+  const ua = navigator.userAgent || '';
+  const smallScreen = Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 820;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || smallScreen;
+}
+
 function isPerfMode() {
-  return !!state.preferences.perfMode || detectAutoPerf();
+  return !!state.preferences.perfMode || detectAutoPerf() || isMobileDevice();
 }
 
 function setMotionEnabled(enabled) {
@@ -882,6 +888,7 @@ function applyPreferences() {
   const perf = isPerfMode();
   document.body.classList.toggle('focus', !!state.preferences.focusMode);
   document.body.classList.toggle('perf', perf);
+  document.body.classList.toggle('mobile', isMobileDevice());
   const blur = perf ? Math.min(state.preferences.blur || 18, 10) : (state.preferences.blur || 18);
   const motion = perf ? Math.min(state.preferences.motion ?? 1, 0.6) : (state.preferences.motion ?? 1);
   document.documentElement.style.setProperty('--blur', `${blur}px`);
