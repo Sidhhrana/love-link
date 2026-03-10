@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260310-ux4';
+const APP_VERSION = '20260310-ux5';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -17,7 +17,7 @@ const FIREBASE_DEFAULT_CONFIG = {
 const defaultState = {
   auth: { loggedIn: false, name: '', role: 'guy', pairCode: '', partnerName: 'Partner' },
   settings: { anniversary: '', adminCode: 'lovelink-admin', themeOverride: 'auto', notifications: false, featureFlags: { reminders: true, letters: true, game: true, wall: true } },
-  preferences: { focusMode: false, haptics: true, soundCue: false, blur: 18, motion: 1, radius: 24, scale: 1 },
+  preferences: { focusMode: false, haptics: true, soundCue: false, perfMode: false, blur: 18, motion: 1, radius: 24, scale: 1 },
   wallpaper: { imageData: '', blur: 10, dim: 0.34 },
   sync: { firebaseConfig: '', enabled: true, connected: false, lastEventAt: 0, lastNotifiedMissAt: 0 },
   push: { token: '' },
@@ -91,6 +91,7 @@ const gameRuntime = {
 };
 
 const tabId = getTabId();
+const motionRuntime = { enabled: true, raf: 0, initialized: false, start: null };
 let deferredInstallPrompt = null;
 let activeScreen = 'home';
 let menuAnimating = false;
@@ -120,7 +121,7 @@ const els = {
   addLetterImageBtn: byId('addLetterImageBtn'), letterImageInput: byId('letterImageInput'), letterAttachStatus: byId('letterAttachStatus'), boldLetterBtn: byId('boldLetterBtn'), italicLetterBtn: byId('italicLetterBtn'),
   addLetterBtn: byId('addLetterBtn'), lettersList: byId('lettersList'), annivInput: byId('annivInput'), partnerNameInput: byId('partnerNameInput'),
   saveSettingsBtn: byId('saveSettingsBtn'), requestNotifBtn: byId('requestNotifBtn'), focusToggle: byId('focusToggle'), hapticToggle: byId('hapticToggle'),
-  soundToggle: byId('soundToggle'), blurInput: byId('blurInput'), motionInput: byId('motionInput'), radiusInput: byId('radiusInput'),
+  soundToggle: byId('soundToggle'), perfToggle: byId('perfToggle'), blurInput: byId('blurInput'), motionInput: byId('motionInput'), radiusInput: byId('radiusInput'),
   wallpaperLayer: byId('wallpaperLayer'), wallpaperFileInput: byId('wallpaperFileInput'), chooseWallpaperBtn: byId('chooseWallpaperBtn'), removeWallpaperBtn: byId('removeWallpaperBtn'),
   wallpaperBlurInput: byId('wallpaperBlurInput'), wallpaperDimInput: byId('wallpaperDimInput'), applyWallpaperBtn: byId('applyWallpaperBtn'), wallpaperStatus: byId('wallpaperStatus'),
   scaleInput: byId('scaleInput'), adminCodeInput: byId('adminCodeInput'), adminOpenBtn: byId('adminOpenBtn'), adminPanel: byId('adminPanel'),
@@ -141,7 +142,8 @@ const els = {
 setupPWA();
 bindAuth();
 bindMain();
-setupUXMotion();
+// Disable tilt-based background motion for a lighter phone experience.
+motionRuntime.enabled = false;
 paintFromState();
 handleMissQuery();
 saveState(false);
@@ -157,25 +159,38 @@ document.addEventListener('visibilitychange', () => {
 function byId(id) { return document.getElementById(id); }
 
 function setupUXMotion() {
+  if (motionRuntime.initialized) return;
+  motionRuntime.initialized = true;
   const root = document.documentElement;
   let tx = 0;
   let ty = 0;
   let cx = 0;
   let cy = 0;
-  let raf = 0;
 
   const render = () => {
+    if (!motionRuntime.enabled) {
+      motionRuntime.raf = 0;
+      root.style.setProperty('--tilt-x', '0px');
+      root.style.setProperty('--tilt-y', '0px');
+      root.style.setProperty('--mx', '50%');
+      root.style.setProperty('--my', '50%');
+      return;
+    }
     cx += (tx - cx) * 0.12;
     cy += (ty - cy) * 0.12;
     root.style.setProperty('--tilt-x', `${(cx * 9).toFixed(2)}px`);
     root.style.setProperty('--tilt-y', `${(cy * 9).toFixed(2)}px`);
     root.style.setProperty('--mx', `${(50 + cx * 18).toFixed(2)}%`);
     root.style.setProperty('--my', `${(50 + cy * 18).toFixed(2)}%`);
-    raf = requestAnimationFrame(render);
+    motionRuntime.raf = requestAnimationFrame(render);
   };
-  raf = requestAnimationFrame(render);
+  motionRuntime.start = () => {
+    if (!motionRuntime.raf) motionRuntime.raf = requestAnimationFrame(render);
+  };
+  motionRuntime.start();
 
   window.addEventListener('pointermove', (ev) => {
+    if (!motionRuntime.enabled) return;
     const nx = (ev.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
     const ny = (ev.clientY / Math.max(1, window.innerHeight)) * 2 - 1;
     tx = Math.max(-1, Math.min(1, nx));
@@ -185,6 +200,7 @@ function setupUXMotion() {
   window.addEventListener('pointerleave', () => { tx = 0; ty = 0; }, { passive: true });
 
   window.addEventListener('deviceorientation', (ev) => {
+    if (!motionRuntime.enabled) return;
     if (document.hidden) return;
     const gx = Number(ev.gamma || 0);
     const gy = Number(ev.beta || 0);
@@ -445,6 +461,7 @@ function bindMain() {
     state.preferences.focusMode = els.focusToggle.checked;
     state.preferences.haptics = els.hapticToggle.checked;
     state.preferences.soundCue = els.soundToggle.checked;
+    if (els.perfToggle) state.preferences.perfMode = !!els.perfToggle.checked;
     state.preferences.blur = Number(els.blurInput.value || 18);
     state.preferences.motion = Number(els.motionInput.value || 1);
     state.preferences.radius = Number(els.radiusInput.value || 24);
@@ -683,6 +700,7 @@ function paintFromState() {
   els.focusToggle.checked = !!state.preferences.focusMode;
   els.hapticToggle.checked = !!state.preferences.haptics;
   els.soundToggle.checked = !!state.preferences.soundCue;
+  if (els.perfToggle) els.perfToggle.checked = !!state.preferences.perfMode;
   els.blurInput.value = String(state.preferences.blur || 18);
   els.motionInput.value = String(state.preferences.motion ?? 1);
   els.radiusInput.value = String(state.preferences.radius || 24);
@@ -813,17 +831,39 @@ function closeMenu(immediate = false) {
   else setTimeout(done, 180);
 }
 
+function detectAutoPerf() {
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  const mem = Number(navigator.deviceMemory || 0);
+  const cores = Number(navigator.hardwareConcurrency || 0);
+  return !!reduced || (mem && mem <= 4) || (cores && cores <= 4);
+}
+
+function isPerfMode() {
+  return !!state.preferences.perfMode || detectAutoPerf();
+}
+
+function setMotionEnabled(enabled) {
+  motionRuntime.enabled = !!enabled;
+  if (motionRuntime.enabled) motionRuntime.start?.();
+}
+
 function applyPreferences() {
+  const perf = isPerfMode();
   document.body.classList.toggle('focus', !!state.preferences.focusMode);
-  document.documentElement.style.setProperty('--blur', `${state.preferences.blur || 18}px`);
-  document.documentElement.style.setProperty('--motion', String(state.preferences.motion ?? 1));
+  document.body.classList.toggle('perf', perf);
+  const blur = perf ? Math.min(state.preferences.blur || 18, 10) : (state.preferences.blur || 18);
+  const motion = perf ? Math.min(state.preferences.motion ?? 1, 0.6) : (state.preferences.motion ?? 1);
+  document.documentElement.style.setProperty('--blur', `${blur}px`);
+  document.documentElement.style.setProperty('--motion', String(motion));
   document.documentElement.style.setProperty('--radius', `${state.preferences.radius || 24}px`);
   document.documentElement.style.setProperty('--scale', String(state.preferences.scale ?? 1));
+  setMotionEnabled(!perf);
 }
 
 function applyWallpaperPreview(imageData, blur, dim) {
   if (!els.wallpaperLayer) return;
-  const b = Math.max(0, Math.min(24, Number(blur || 0)));
+  const perf = isPerfMode();
+  const b = Math.max(0, Math.min(perf ? 8 : 24, Number(blur || 0)));
   const d = Math.max(0, Math.min(0.8, Number(dim || 0)));
   els.wallpaperLayer.style.setProperty('--wall-blur', `${b}px`);
   els.wallpaperLayer.style.setProperty('--wall-dim', String(d));
@@ -834,6 +874,7 @@ function applyWallpaperPreview(imageData, blur, dim) {
 
 function applyWallpaperFromState() {
   applyWallpaperPreview(state.wallpaper?.imageData || '', state.wallpaper?.blur ?? 10, state.wallpaper?.dim ?? 0.34);
+  document.body.classList.toggle('has-wallpaper', !!state.wallpaper?.imageData);
 }
 
 function compressImageFile(file) {
@@ -1244,7 +1285,7 @@ function markReminderSnooze(id, mins = 10) {
 
 function startReminderEngine() {
   stopReminderEngine();
-  reminderTimer = setInterval(checkRemindersDue, 15000);
+  reminderTimer = setInterval(checkRemindersDue, 30000);
   checkRemindersDue();
 }
 
@@ -1609,6 +1650,12 @@ function startMiniGame() {
   const c = els.miniGame;
   if (!c) return;
   const ctx = c.getContext('2d');
+  const perf = isPerfMode();
+  if (perf) {
+    const targetW = Math.max(360, Math.min(520, Math.floor(window.innerWidth * 0.9)));
+    c.width = targetW;
+    c.height = Math.max(200, Math.floor(targetW * 0.45));
+  }
   const w = gameRuntime.width = c.width;
   const h = gameRuntime.height = c.height;
   gameRuntime.running = true;
@@ -1717,15 +1764,16 @@ function startMiniGame() {
     ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < 8; i += 1) {
+    const lines = perf ? 4 : 8;
+    for (let i = 0; i < lines; i += 1) {
       ctx.beginPath();
-      ctx.moveTo(0, (h / 8) * i + 4);
-      ctx.lineTo(w, (h / 8) * i + 4);
+      ctx.moveTo(0, (h / lines) * i + 4);
+      ctx.lineTo(w, (h / lines) * i + 4);
       ctx.stroke();
     }
 
     ctx.shadowColor = 'rgba(110,190,255,0.55)';
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = perf ? 0 : 16;
     ctx.fillStyle = '#e9f4ff';
     ctx.fillRect(gameRuntime.playerX, paddleY, gameRuntime.playerW, gameRuntime.playerH);
     ctx.shadowBlur = 0;
@@ -1733,7 +1781,7 @@ function startMiniGame() {
     ballGrad.addColorStop(0, '#ffffff');
     ballGrad.addColorStop(1, '#ff7fa7');
     ctx.shadowColor = 'rgba(255,123,171,0.65)';
-    ctx.shadowBlur = 18;
+    ctx.shadowBlur = perf ? 0 : 18;
     ctx.fillStyle = ballGrad;
     ctx.beginPath();
     ctx.arc(gameRuntime.ballX, gameRuntime.ballY, gameRuntime.ballR, 0, Math.PI * 2);

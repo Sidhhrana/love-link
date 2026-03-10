@@ -10,7 +10,7 @@
   <title>Love Link</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260310-ux4" />
+  <link rel="stylesheet" href="./styles.css?v=20260310-ux5" />
 </head>
 <body>
   <div class="bg-layer"></div>
@@ -260,6 +260,10 @@
             <label class="ios-toggle"><input id="hapticToggle" type="checkbox" /><span></span>Haptics</label>
             <label class="ios-toggle"><input id="soundToggle" type="checkbox" /><span></span>Sound</label>
           </div>
+          <div class="row two">
+            <label class="ios-toggle"><input id="perfToggle" type="checkbox" /><span></span>Performance Mode</label>
+            <span class="hint">Reduces effects for smoother playback</span>
+          </div>
 
           <div class="row two">
             <label class="control">Glass Blur <input id="blurInput" class="ios-slider" type="range" min="8" max="30" step="1" /></label>
@@ -414,6 +418,6 @@
   </div>
 
   <div id="toastHost" class="toast-host"></div>
-  <script src="./app.js?v=20260310-ux4"></script>
+  <script src="./app.js?v=20260310-ux5"></script>
 </body>
 </html>

@@ -43,8 +43,7 @@ body {
     radial-gradient(900px 520px at 120% 112%, rgba(255, 159, 199, 0.3), transparent 54%),
     linear-gradient(165deg, var(--bg1), var(--bg2));
   overflow-x: hidden;
-  transition: background-position calc(0.22s * var(--motion)) ease;
-  background-position: var(--mx) var(--my), calc(100% - var(--mx)) calc(100% - var(--my)), center;
+  background-position: center;
 }
 
 .bg-layer {
@@ -55,8 +54,7 @@ body {
   opacity: 0.62;
   filter: blur(52px);
   background: conic-gradient(from 180deg at 30% 20%, #ffffff14, #72b8ff12, #ffb4d512, #ffffff14);
-  animation: swirl calc(28s / max(var(--motion), 0.1)) linear infinite;
-  transform: translate3d(calc(var(--tilt-x) * -0.45), calc(var(--tilt-y) * -0.45), 0);
+  transform: none;
 }
 
 .wallpaper-layer {
@@ -67,7 +65,7 @@ body {
   background-size: cover;
   background-position: center;
   filter: blur(var(--wall-blur, 10px)) saturate(112%);
-  transform: scale(1.06) translate3d(calc(var(--tilt-x) * -0.25), calc(var(--tilt-y) * -0.25), 0);
+  transform: scale(1.03);
   transition: filter calc(0.22s * var(--motion)) ease, background-image calc(0.28s * var(--motion)) ease;
 }
 
@@ -961,6 +959,41 @@ body.menu-open {
   animation: pop calc(0.28s * var(--motion)) ease;
 }
 
+body.perf .bg-layer {
+  animation: none;
+  filter: blur(26px);
+  transform: none;
+}
+
+body.perf .wallpaper-layer {
+  filter: blur(var(--wall-blur, 6px)) saturate(105%);
+  transform: none;
+  transition: none;
+}
+
+body.perf .liquid-card {
+  backdrop-filter: blur(8px) saturate(110%);
+  box-shadow: 0 10px 24px rgba(5, 12, 25, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+body.perf .liquid-card::after {
+  opacity: 0.45;
+}
+
+body.perf .hero-orbit {
+  filter: blur(8px);
+  opacity: 0.4;
+}
+
+body.perf .miss-btn-circle {
+  box-shadow: 0 10px 22px rgba(255, 89, 122, 0.22), 0 0 10px rgba(255, 116, 140, 0.2);
+}
+
+body.perf * {
+  transition-duration: 0.12s !important;
+  animation-duration: 0.12s !important;
+}
+
 @keyframes reveal {
   to {
     opacity: 1;
@@ -987,6 +1020,10 @@ body.menu-open {
 
 @keyframes swirl {
   to { transform: rotate(360deg); }
+}
+
+body.has-wallpaper .bg-layer {
+  display: none;
 }
 
 @keyframes pop {
