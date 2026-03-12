@@ -1,9 +1,16 @@
 Love Link - Project Context (Mar 10, 2026)
-========================================
+=========================================
 
-Goal
-----
-Single-page HTML/CSS/JS PWA for long-distance couples. Installable on iOS/Android (Add to Home Screen). Realtime sync, notifications, and an Apple-like liquid-glass UI that runs well on phones.
+Purpose & Product Vision
+------------------------
+Love Link is a single-page, installable PWA (HTML/CSS/JS only) for long-distance couples. It provides a private, shared space with realtime sync, partner presence, and push notifications. The UI is intentionally “Apple-like” with a liquid glass aesthetic, but performance on low-end phones is critical.
+
+Current Status Summary
+----------------------
+- Functional: miss signals, mood sync, notes, goals, dates, reminders, letters, game, wallpapers, admin panel, push.
+- Visual: iOS-style glass UI, now moving toward a light/white Apple aesthetic with colored accents.
+- Performance: background motion removed; performance mode exists; remaining glass blur kept but reduced for mobile.
+- Deployment: static on GitHub Pages, service worker caching with version bump to force refresh.
 
 Core Features (Current)
 -----------------------
@@ -48,14 +55,20 @@ Core Features (Current)
    - Feature flags: Reminders/Letters/Game/Wall.
    - Hard reset with double confirm + optional cloud wipe.
 
-Architecture
-------------
+Architecture & Files
+--------------------
 Single static app. No build system.
 - index.html: UI layout and screens.
 - styles.css: Apple-like glass UI, animations, mobile styling.
 - app.js: All logic, state, Firebase sync, push, UI events.
 - sw.js: PWA cache + push notifications.
 - manifest.webmanifest + icons/: PWA metadata/icons.
+
+Runtime Environment
+-------------------
+- Runs entirely in the browser (PWA).
+- iOS: Add-to-Home-Screen limitations (push works in modern iOS, but with OS limits).
+- Android: Chrome PWA expected; best behavior on recent devices.
 
 Realtime & Push
 ---------------
@@ -82,8 +95,15 @@ State Model (app.js defaultState)
 - admin logs + filter
 - game state + metrics
 
+UI & Theme Design Notes
+-----------------------
+- Visual direction: Apple-like “liquid glass,” soft gradients, clean typography.
+- Themes: Guy (blue accent) and Girl (pink accent), both now intended on a light/white base.
+- Glass: uses `backdrop-filter` on cards/overlays; mobile uses reduced blur to avoid artifacts.
+- Animations: some subtle CSS animations remain (breathe, gleam) but heavy background motion removed.
+
 Recent Performance Work (Mar 2026)
------------------------------------
+----------------------------------
 - Removed tilt/axis background motion (disabled motion loop).
 - Disabled animated background layer (bg-layer) to reduce GPU load.
 - Simplified wallpaper transforms (static scale).
@@ -92,6 +112,12 @@ Recent Performance Work (Mar 2026)
 - Added drag/velocity drawer pull with friction (iOS feel).
 - Fixed mobile extra scroll band by adjusting shell padding and overflow.
 - Cache version bumps to prevent stale GitHub Pages assets (APP_VERSION).
+
+Known UX Issues / Risks
+-----------------------
+- On some Android devices, `backdrop-filter` causes gray/boxy artifacts. We reduced it on mobile, but keep it for the iOS glass look.
+- Heavy assets (wallpaper and letter images) are stored as base64 in Realtime DB, which can cause lag and quota usage.
+- Full state sync is large and frequent; could be optimized by storing diffs and moving images to Storage.
 
 Key UX/Behavior Notes
 ---------------------
@@ -127,6 +153,8 @@ If You Need to Optimize Further
 2) Remove remaining blur/backdrop-filter on low-end devices.
 3) Throttle CSS animations (or set prefers-reduced-motion).
 4) Limit max base64 image size in compressImageFile.
+5) Reduce full-state sync frequency or switch to event-only sync.
+6) Reduce heavy box-shadows on mobile; avoid nested glass layers.
 
 Versioning
 ----------
@@ -137,3 +165,12 @@ Deployment
 ----------
 Static hosting on GitHub Pages. PWA uses service worker cache (sw.js).
 If new deploy shows old UI, bump APP_VERSION.
+
+Recent Change Log (High Level)
+------------------------------
+- Added Reminders v2 (done/skip/snooze, stats, streaks).
+- Added Letters v2 (formatting, attachment, overlay view, open receipts).
+- Added Admin super panel (diff, replay, import/export, flags).
+- Added drag-to-open home drawer with friction.
+- Performance optimizations (removed tilt loop, reduced heavy effects).
+- Shifted toward light iOS aesthetic with color accents.

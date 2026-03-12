@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260310-ux8';
+const APP_VERSION = '20260313-ux16';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -15,9 +15,10 @@ const FIREBASE_DEFAULT_CONFIG = {
 };
 
 const defaultState = {
-  auth: { loggedIn: false, name: '', role: 'guy', pairCode: '', partnerName: 'Partner' },
+  auth: { loggedIn: false, name: '', role: 'guy', pairCode: '', partnerName: 'Partner', partnerAvatarId: '' },
   settings: { anniversary: '', adminCode: 'lovelink-admin', themeOverride: 'auto', notifications: false, featureFlags: { reminders: true, letters: true, game: true, wall: true } },
   preferences: { focusMode: false, haptics: true, soundCue: false, perfMode: false, blur: 18, motion: 1, radius: 24, scale: 1 },
+  profile: { avatarId: 'ava-1' },
   wallpaper: { imageData: '', blur: 10, dim: 0.34 },
   sync: { firebaseConfig: '', enabled: true, connected: false, lastEventAt: 0, lastNotifiedMissAt: 0 },
   push: { token: '' },
@@ -34,6 +35,15 @@ const defaultState = {
   admin: { logs: [], logFilter: 'all' },
   game: { bestByUser: {}, lastScore: 0 },
   metrics: { opens: 0, misses: 0, saves: 0 }
+};
+
+const avatarLibrary = {
+  'ava-1': { name: 'Nova', a: '#7bb6ff', b: '#c9e0ff', accent: '#ffffff' },
+  'ava-2': { name: 'Petal', a: '#ff9ac6', b: '#ffd1e6', accent: '#ffffff' },
+  'ava-3': { name: 'Mint', a: '#6fe2c1', b: '#baf5df', accent: '#ffffff' },
+  'ava-4': { name: 'Peach', a: '#ffb48a', b: '#ffd7b9', accent: '#ffffff' },
+  'ava-5': { name: 'Lilac', a: '#b5a6ff', b: '#e1d8ff', accent: '#ffffff' },
+  'ava-6': { name: 'Stone', a: '#98a4b5', b: '#d6dde6', accent: '#ffffff' }
 };
 
 const state = loadState();
@@ -100,6 +110,8 @@ let reminderTimer = 0;
 let pendingWallpaperData = '';
 let lastPresenceLogAt = 0;
 let pendingLetterImageData = '';
+let missHoldTimer = 0;
+let missHoldTriggered = false;
 
 const els = {
   authScreen: byId('authScreen'), appRoot: byId('appRoot'), roleInput: byId('roleInput'), nameInput: byId('nameInput'),
@@ -110,6 +122,10 @@ const els = {
   vibePingBtn: byId('vibePingBtn'), missStatus: byId('missStatus'), moodLabel: byId('moodLabel'), moodText: byId('moodText'),
   homeNoteState: byId('homeNoteState'), homeMoodState: byId('homeMoodState'), homePartnerState: byId('homePartnerState'), presenceStatus: byId('presenceStatus'),
   moodSlider: byId('moodSlider'), partnerAvatar: byId('partnerAvatar'), partnerRing: byId('partnerRing'),
+  selfAvatar: byId('selfAvatar'), settingsAvatarPreview: byId('settingsAvatarPreview'), avatarPicker: byId('avatarPicker'), avatarName: byId('avatarName'),
+  profileSelfAvatar: byId('profileSelfAvatar'), profilePartnerAvatar: byId('profilePartnerAvatar'),
+  profileNames: byId('profileNames'), profileStatus: byId('profileStatus'), profileLastSeen: byId('profileLastSeen'),
+  gameSelfAvatar: byId('gameSelfAvatar'), gamePartnerAvatar: byId('gamePartnerAvatar'),
   daysTogether: byId('daysTogether'), sinceText: byId('sinceText'), dailyPrompt: byId('dailyPrompt'), savePromptBtn: byId('savePromptBtn'),
   promptSaved: byId('promptSaved'), pulseList: byId('pulseList'), navTabs: byId('navTabs'), songTitle: byId('songTitle'),
   songUrl: byId('songUrl'), addSongBtn: byId('addSongBtn'), songsList: byId('songsList'), goalText: byId('goalText'), goalDate: byId('goalDate'),
@@ -134,6 +150,7 @@ const els = {
   flagRemindersToggle: byId('flagRemindersToggle'), flagLettersToggle: byId('flagLettersToggle'), flagGameToggle: byId('flagGameToggle'), flagWallToggle: byId('flagWallToggle'), superAdminOut: byId('superAdminOut'),
   monitorList: byId('monitorList'), resetConfirmInput: byId('resetConfirmInput'), hardResetBtn: byId('hardResetBtn'), logoutBtn: byId('logoutBtn'), toastHost: byId('toastHost'), signalOverlay: byId('signalOverlay'),
   signalTitle: byId('signalTitle'), signalBody: byId('signalBody'), closeSignalBtn: byId('closeSignalBtn'), miniGame: byId('miniGame'),
+  signalAvatar: byId('signalAvatar'),
   letterViewOverlay: byId('letterViewOverlay'), letterViewTitle: byId('letterViewTitle'), letterViewReceipt: byId('letterViewReceipt'), letterViewMedia: byId('letterViewMedia'), letterViewBody: byId('letterViewBody'), closeLetterViewBtn: byId('closeLetterViewBtn'),
   startGameBtn: byId('startGameBtn'), pauseGameBtn: byId('pauseGameBtn'), myBestScore: byId('myBestScore'),
   runScore: byId('runScore'), gameLevel: byId('gameLevel'), gameLives: byId('gameLives'), scoreBoard: byId('scoreBoard')
@@ -157,6 +174,65 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function byId(id) { return document.getElementById(id); }
+
+function getAvatarDef(id) {
+  return avatarLibrary[id] || avatarLibrary['ava-1'];
+}
+
+function renderAvatarSvg(id) {
+  const def = getAvatarDef(id);
+  const gid = `g-${id}-${Math.random().toString(36).slice(2, 7)}`;
+  return `
+    <svg class="avatar-svg" viewBox="0 0 100 100" role="img" aria-label="${def.name} avatar">
+      <defs>
+        <linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="${def.a}" />
+          <stop offset="100%" stop-color="${def.b}" />
+        </linearGradient>
+      </defs>
+      <circle cx="50" cy="50" r="44" fill="url(#${gid})" />
+      <circle cx="34" cy="44" r="5" fill="rgba(20,24,34,0.6)" />
+      <circle cx="66" cy="44" r="5" fill="rgba(20,24,34,0.6)" />
+      <path d="M35 63c6 6 24 6 30 0" stroke="rgba(20,24,34,0.55)" stroke-width="4" stroke-linecap="round" fill="none" />
+      <circle cx="24" cy="30" r="6" fill="${def.accent}" opacity="0.85" />
+    </svg>
+  `;
+}
+
+function setAvatar(el, avatarId) {
+  if (!el) return;
+  const def = getAvatarDef(avatarId);
+  el.innerHTML = renderAvatarSvg(avatarId);
+  el.setAttribute('data-avatar', avatarId);
+  el.setAttribute('aria-label', def.name);
+}
+
+function renderAvatars() {
+  const selfId = state.profile?.avatarId || 'ava-1';
+  const partnerId = state.auth?.partnerAvatarId || 'ava-2';
+  setAvatar(els.selfAvatar, selfId);
+  setAvatar(els.settingsAvatarPreview, selfId);
+  setAvatar(els.gameSelfAvatar, selfId);
+  setAvatar(els.gamePartnerAvatar, partnerId);
+  setAvatar(els.partnerAvatar, partnerId);
+  setAvatar(els.profileSelfAvatar, selfId);
+  setAvatar(els.profilePartnerAvatar, partnerId);
+  if (els.avatarName) els.avatarName.textContent = getAvatarDef(selfId).name;
+}
+
+function renderAvatarPicker() {
+  if (!els.avatarPicker) return;
+  els.avatarPicker.innerHTML = '';
+  Object.entries(avatarLibrary).forEach(([id, def]) => {
+    const btn = document.createElement('button');
+    btn.className = 'avatar-choice';
+    btn.type = 'button';
+    btn.dataset.avatar = id;
+    btn.innerHTML = `<div class="mini-avatar avatar-frame">${renderAvatarSvg(id)}</div><span>${def.name}</span>`;
+    if (state.profile?.avatarId === id) btn.classList.add('selected');
+    els.avatarPicker.appendChild(btn);
+  });
+}
 
 function setupUXMotion() {
   if (motionRuntime.initialized) return;
@@ -322,8 +398,58 @@ function bindMain() {
     showScreen(b.dataset.tab);
   });
   bindShellLayout();
+  if (els.avatarPicker) {
+    els.avatarPicker.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-avatar]');
+      if (!btn) return;
+      const id = btn.dataset.avatar;
+      if (!id || !avatarLibrary[id]) return;
+      state.profile.avatarId = id;
+      saveState();
+      renderAvatars();
+      renderAvatarPicker();
+      publishProfile();
+      emitEvent('profile_update', { avatarId: id });
+    });
+  }
 
-  els.missBtn.addEventListener('click', sendMiss);
+  if (els.missBtn) {
+    const clearHold = () => {
+      if (missHoldTimer) clearTimeout(missHoldTimer);
+      missHoldTimer = 0;
+    };
+    const startHold = (ev) => {
+      ev.preventDefault();
+      missHoldTriggered = false;
+      els.missBtn.classList.add('pressing');
+      clearHold();
+      missHoldTimer = setTimeout(() => {
+        missHoldTriggered = true;
+        sendMiss('strong');
+        maybeVibrate([30, 70, 30, 70]);
+      }, 650);
+    };
+    const endHold = () => {
+      els.missBtn.classList.remove('pressing');
+      clearHold();
+      if (!missHoldTriggered) sendMiss('normal');
+      missHoldTriggered = false;
+    };
+    els.missBtn.addEventListener('pointerdown', startHold);
+    els.missBtn.addEventListener('pointerup', endHold);
+    els.missBtn.addEventListener('pointercancel', () => {
+      els.missBtn.classList.remove('pressing');
+      clearHold();
+      missHoldTriggered = false;
+    });
+    els.missBtn.addEventListener('pointerleave', () => {
+      if (!missHoldTimer) return;
+      els.missBtn.classList.remove('pressing');
+      clearHold();
+      missHoldTriggered = false;
+    });
+    els.missBtn.addEventListener('click', (ev) => ev.preventDefault());
+  }
   if (els.shareMissBtn) els.shareMissBtn.addEventListener('click', shareMissLink);
   if (els.vibePingBtn) els.vibePingBtn.addEventListener('click', () => {
     emitEvent('vibe_ping', { mood: state.mood });
@@ -409,6 +535,7 @@ function bindMain() {
     });
   }
 
+
   els.letterLockType.addEventListener('change', () => {
     if (els.letterLockType.value === 'mood') {
       els.letterLockValue.type = 'text';
@@ -473,6 +600,7 @@ function bindMain() {
     renderHomeBits();
     emitEvent('settings_update', {});
   });
+
 
   if (els.chooseWallpaperBtn && els.wallpaperFileInput) {
     els.chooseWallpaperBtn.addEventListener('click', () => els.wallpaperFileInput.click());
@@ -648,9 +776,6 @@ function bindMain() {
     const second = confirm('Final confirmation: this action cannot be undone. Reset now?');
     if (!second) return;
 
-    const cloud = confirm('Also wipe cloud data for this pair code on ALL devices?');
-    if (!cloud) return;
-
     try {
       await wipeRemoteRoomData();
       disconnectRealtime();
@@ -691,6 +816,8 @@ function paintFromState() {
   applyTheme();
   applyPreferences();
   applyFeatureFlags();
+  renderAvatars();
+  renderAvatarPicker();
 
   els.annivInput.value = state.settings.anniversary || '';
   els.partnerNameInput.value = state.auth.partnerName || '';
@@ -725,6 +852,7 @@ function paintFromState() {
   renderDates();
   renderReminders();
   renderLetters();
+  renderProfileCard();
   renderPulse();
   renderMonitoring();
   renderScoreBoard();
@@ -737,11 +865,25 @@ function paintFromState() {
 }
 
 function paintHeader() {
+  els.brandTitle.textContent = 'Love Link';
+  renderAvatars();
+  updatePresenceUI();
+}
+
+function renderProfileCard() {
   const n = state.auth.name || 'You';
   const p = syncRuntime.partnerLiveName || state.auth.partnerName || 'Partner';
-  els.brandTitle.textContent = `${n} + ${p}`;
-  els.partnerAvatar.textContent = p[0]?.toUpperCase() || 'P';
-  updatePresenceUI();
+  if (els.profileNames) els.profileNames.textContent = `${n} + ${p}`;
+  const online = !!syncRuntime.partnerOnline;
+  const lastSeen = syncRuntime.partnerLastSeenTs ? new Date(syncRuntime.partnerLastSeenTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'never';
+  if (els.profileStatus) {
+    els.profileStatus.textContent = online ? 'Online now' : 'Offline';
+    els.profileStatus.classList.toggle('soft', !online);
+  }
+  if (els.profileLastSeen) {
+    els.profileLastSeen.textContent = online ? 'Active right now' : `Last seen ${lastSeen}`;
+  }
+  renderAvatars();
 }
 
 function showScreen(tab) {
@@ -895,6 +1037,8 @@ function applyPreferences() {
   document.documentElement.style.setProperty('--motion', String(motion));
   document.documentElement.style.setProperty('--radius', `${state.preferences.radius || 24}px`);
   document.documentElement.style.setProperty('--scale', String(state.preferences.scale ?? 1));
+  const micro = perf ? 0.6 : 1;
+  document.documentElement.style.setProperty('--micro', String(micro));
   setMotionEnabled(!perf);
 }
 
@@ -1004,17 +1148,19 @@ function renderMood() {
   document.documentElement.style.setProperty('--glow', `${m.ring}99`);
 }
 
-function sendMiss() {
+function sendMiss(strength = 'normal') {
   const now = new Date();
   state.missLog.unshift(now.toISOString());
   state.missLog = state.missLog.slice(0, 60);
   state.metrics.misses += 1;
   saveState();
-  els.missStatus.textContent = `Signal sent at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  pulse(`${state.auth.name} sent a miss signal`);
-  emitEvent('miss_signal', { at: now.toISOString() });
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const label = strength === 'strong' ? 'Strong signal' : 'Signal';
+  els.missStatus.textContent = `${label} sent at ${timeStr}`;
+  pulse(`${state.auth.name} sent a ${strength === 'strong' ? 'strong ' : ''}miss signal`);
+  emitEvent('miss_signal', { at: now.toISOString(), avatarId: state.profile?.avatarId || 'ava-1', strength });
 
-  maybeVibrate([24, 42, 24]);
+  maybeVibrate(strength === 'strong' ? [35, 60, 35, 60] : [24, 42, 24]);
   maybeBeep();
 }
 
@@ -1033,7 +1179,7 @@ function handleMissQuery() {
   const from = q.get('from') || 'Your person';
   const ts = Number(q.get('ts') || Date.now());
   els.missStatus.textContent = `${from} sent a signal (${new Date(ts).toLocaleString()})`;
-  showSignalOverlay(`${from} misses you`, 'Shared link signal');
+  showSignalOverlay(`${from} misses you`, 'Shared link signal', state.auth.partnerAvatarId);
   pushDeviceAlert(`${from} misses you`, 'Shared signal');
   maybeBeep();
   history.replaceState({}, '', `${location.origin}${location.pathname}`);
@@ -1076,6 +1222,8 @@ function updatePresenceUI() {
   if (els.homePartnerState) {
     els.homePartnerState.textContent = online ? `Online now` : `Last seen ${lastSeen}`;
   }
+  renderAvatars();
+  renderProfileCard();
 }
 
 function isFeatureEnabled(key) {
@@ -1175,12 +1323,25 @@ function renderSongs() {
   bindDelete(els.songsList, state.songs, renderSongs, 'song_delete');
 }
 
+
 function renderGoals() {
   els.goalsList.innerHTML = '';
+  if (!state.goals.length) {
+    els.goalsList.innerHTML = emptyStateHtml('No goals yet', 'Add a shared goal to start building momentum.');
+    return;
+  }
   state.goals.forEach((g) => {
     const row = document.createElement('div');
-    row.className = 'pill';
-    row.innerHTML = `<span><input type="checkbox" data-tick="${g.id}" ${g.done ? 'checked' : ''}/> ${escapeHtml(g.text)} ${g.date ? `(${g.date})` : ''}</span><button data-del="${g.id}" class="btn ghost">X</button>`;
+    row.className = 'ios-row';
+    row.innerHTML = `
+      <div class="ios-row-main">
+        <label class="ios-row-title"><input type="checkbox" data-tick="${g.id}" ${g.done ? 'checked' : ''}/> ${escapeHtml(g.text)}</label>
+        <div class="ios-row-sub">${g.date ? `Due ${g.date}` : 'No date set'}</div>
+      </div>
+      <div class="ios-row-actions">
+        <button data-del="${g.id}" class="icon-btn">Delete</button>
+      </div>
+    `;
     els.goalsList.appendChild(row);
   });
   els.goalsList.querySelectorAll('input[data-tick]').forEach((el) => el.addEventListener('change', (ev) => {
@@ -1195,10 +1356,24 @@ function renderGoals() {
 
 function renderDates() {
   els.datesList.innerHTML = '';
+  if (!state.dates.length) {
+    els.datesList.innerHTML = emptyStateHtml('No dates yet', 'Add birthdays, trips, or anniversaries.');
+    renderCalendar();
+    renderHomeBits();
+    return;
+  }
   state.dates.slice().sort((a, b) => a.date.localeCompare(b.date)).forEach((d) => {
     const row = document.createElement('div');
-    row.className = 'pill';
-    row.innerHTML = `<span>${escapeHtml(d.title)} - ${d.date}</span><button data-del="${d.id}" class="btn ghost">X</button>`;
+    row.className = 'ios-row';
+    row.innerHTML = `
+      <div class="ios-row-main">
+        <div class="ios-row-title">${escapeHtml(d.title)}</div>
+        <div class="ios-row-sub">${d.date}</div>
+      </div>
+      <div class="ios-row-actions">
+        <button data-del="${d.id}" class="icon-btn">Delete</button>
+      </div>
+    `;
     els.datesList.appendChild(row);
   });
   bindDelete(els.datesList, state.dates, renderDates, 'date_delete');
@@ -1214,6 +1389,11 @@ function renderReminders() {
     return;
   }
   els.remindersList.innerHTML = '';
+  if (!state.reminders.length) {
+    if (els.reminderStats) els.reminderStats.innerHTML = '';
+    els.remindersList.innerHTML = emptyStateHtml('No reminders yet', 'Schedule a gentle nudge for your partner.');
+    return;
+  }
   const myUid = syncRuntime.authUid || '';
   const mySet = state.reminders.filter((r) => !r.senderUid || r.senderUid === myUid);
   const partnerSet = state.reminders.filter((r) => r.senderUid && r.senderUid !== myUid);
@@ -1379,7 +1559,7 @@ function checkRemindersDue() {
 
     const isOwn = (r.senderUid && r.senderUid === syncRuntime.authUid) || (r.senderName && r.senderName === state.auth.name);
     if (!isOwn) {
-      showSignalOverlay(`Reminder: ${r.title}`, `Scheduled for ${formatReminderTime(r.time)}`);
+      showSignalOverlay(`Reminder: ${r.title}`, `Scheduled for ${formatReminderTime(r.time)}`, state.auth.partnerAvatarId);
       pushDeviceAlert(`Reminder: ${r.title}`, `From ${r.senderName || 'your partner'} at ${formatReminderTime(r.time)}`);
       maybeVibrate([25, 45, 25]);
     }
@@ -1401,13 +1581,27 @@ function renderLetters() {
     return;
   }
   els.lettersList.innerHTML = '';
+  if (!state.letters.length) {
+    els.lettersList.innerHTML = emptyStateHtml('No letters yet', 'Write your first open-when message.');
+    return;
+  }
   state.letters.forEach((l) => {
     const unlocked = isLetterUnlocked(l);
     const lockInfo = l.lockType === 'time' ? `Unlock at ${l.lockValue || 'not set'}` : `Unlock when mood is ${l.lockValue || 'calm'}`;
     const receipt = l.openedAt ? `Opened ${new Date(l.openedAt).toLocaleString()}` : 'Unopened';
     const row = document.createElement('div');
-    row.className = 'pill';
-    row.innerHTML = `<span>${escapeHtml(l.title)}<br><small>${lockInfo}</small><br><small>${receipt}</small></span><span>${unlocked ? `<button data-open="${l.id}" class="btn primary">Open</button>` : '<small>Locked</small>'} <button data-del="${l.id}" class="btn ghost">X</button></span>`;
+    row.className = 'ios-row';
+    row.innerHTML = `
+      <div class="ios-row-main">
+        <div class="ios-row-title">${escapeHtml(l.title)}</div>
+        <div class="ios-row-sub">${lockInfo}</div>
+        <div class="ios-row-sub">${receipt}</div>
+      </div>
+      <div class="ios-row-actions">
+        ${unlocked ? `<button data-open="${l.id}" class="btn primary">Open</button>` : '<span class="ios-row-sub">Locked</span>'}
+        <button data-del="${l.id}" class="icon-btn">Delete</button>
+      </div>
+    `;
     els.lettersList.appendChild(row);
   });
   els.lettersList.querySelectorAll('button[data-open]').forEach((b) => b.addEventListener('click', (ev) => {
@@ -1938,7 +2132,7 @@ function publishState() {
       missLog: state.missLog,
       game: state.game,
       settings: { anniversary: state.settings.anniversary, featureFlags: state.settings.featureFlags },
-      auth: { partnerName: state.auth.partnerName }
+      auth: { partnerName: state.auth.partnerName, avatarId: state.profile?.avatarId || 'ava-1' }
     }
   };
   syncRuntime.roomRef.child('state').set(payload).catch(() => {});
@@ -2030,24 +2224,32 @@ async function connectRealtime() {
     syncRuntime.profilesListener = syncRuntime.roomRef.child('profiles').on('value', (snap) => {
       const data = snap.val() || {};
       let latestName = '';
+      let latestAvatar = '';
       let latestAt = 0;
       for (const [uid, p] of Object.entries(data)) {
         if (uid === syncRuntime.authUid) continue;
         const updatedAt = Number(p?.updatedAt || 0);
-        if (updatedAt >= latestAt && p?.name) {
+        if (updatedAt >= latestAt) {
           latestAt = updatedAt;
-          latestName = String(p.name);
+          latestName = p?.name ? String(p.name) : latestName;
+          latestAvatar = p?.avatarId ? String(p.avatarId) : latestAvatar;
         }
       }
+      let changed = false;
       if (latestName) {
         syncRuntime.partnerLiveName = latestName;
         if (latestName !== state.auth.partnerName) {
           state.auth.partnerName = latestName;
-          saveState(false);
+          changed = true;
         }
-        paintHeader();
-        updatePresenceUI();
       }
+      if (latestAvatar && latestAvatar !== state.auth.partnerAvatarId) {
+        state.auth.partnerAvatarId = latestAvatar;
+        changed = true;
+      }
+      if (changed) saveState(false);
+      paintHeader();
+      updatePresenceUI();
     });
 
     syncRuntime.connected = true;
@@ -2088,6 +2290,7 @@ function applyRemoteState(data) {
   state.settings.anniversary = data.settings?.anniversary ?? state.settings.anniversary;
   state.settings.featureFlags = deepMerge(state.settings.featureFlags || {}, data.settings?.featureFlags || {});
   state.auth.partnerName = data.auth?.partnerName ?? state.auth.partnerName;
+  state.auth.partnerAvatarId = data.auth?.avatarId ?? state.auth.partnerAvatarId;
 
   saveState(false);
 
@@ -2135,6 +2338,7 @@ function publishProfile() {
   if (!syncRuntime.connected || !syncRuntime.roomRef || !syncRuntime.authUid) return;
   syncRuntime.roomRef.child(`profiles/${syncRuntime.authUid}`).set({
     name: state.auth.name || 'User',
+    avatarId: state.profile?.avatarId || 'ava-1',
     updatedAt: Date.now()
   }).catch(() => {});
 }
@@ -2197,10 +2401,11 @@ function handleRemoteEvent(ev) {
   if (ev.type === 'miss_signal' && freshMiss && unseenMiss) {
     state.sync.lastNotifiedMissAt = ts;
     saveState(false);
-    els.missStatus.textContent = `${who} sent a miss signal`;
-    showSignalOverlay(`${who} misses you`, 'Live signal received');
+    const strong = ev.payload?.strength === 'strong';
+    els.missStatus.textContent = strong ? `${who} sent a strong signal` : `${who} sent a miss signal`;
+    showSignalOverlay(`${who} misses you`, strong ? 'Strong signal received' : 'Live signal received', ev.payload?.avatarId || state.auth.partnerAvatarId);
     pushDeviceAlert(`${who} misses you`, 'Live signal received');
-    maybeVibrate([30, 55, 30]);
+    maybeVibrate(strong ? [40, 80, 40, 80] : [30, 55, 30]);
     maybeBeep();
   }
   if (ev.type === 'score_update' && ev.payload?.key) {
@@ -2311,9 +2516,11 @@ function loadScript(src) {
   });
 }
 
-function showSignalOverlay(title, body) {
+function showSignalOverlay(title, body, avatarId = '') {
   els.signalTitle.textContent = title;
   els.signalBody.textContent = body;
+  const useId = avatarId || state.auth.partnerAvatarId || state.profile?.avatarId || 'ava-1';
+  setAvatar(els.signalAvatar, useId);
   els.signalOverlay.classList.remove('hidden');
 }
 
@@ -2426,36 +2633,21 @@ function bindDelete(container, arr, rerender, eventType, confirmMessage = '') {
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function escapeHtml(str) { return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+function emptyStateHtml(title, body) {
+  return `
+    <div class="empty-state">
+      <svg class="empty-illustration" viewBox="0 0 96 96" aria-hidden="true">
+        <defs>
+          <linearGradient id="emptyGlow" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="rgba(255,160,205,0.65)" />
+            <stop offset="100%" stop-color="rgba(120,190,255,0.65)" />
+          </linearGradient>
+        </defs>
+        <circle cx="48" cy="48" r="34" fill="url(#emptyGlow)" opacity="0.6" />
+        <path d="M34 48c0-6 4-10 10-10 4 0 7 2 9 5 2-3 5-5 9-5 6 0 10 4 10 10 0 12-19 22-19 22S34 60 34 48z" fill="rgba(255,255,255,0.85)"/>
+      </svg>
+      <strong>${escapeHtml(title)}</strong>
+      <div class="small">${escapeHtml(body)}</div>
+    </div>
+  `;
+}

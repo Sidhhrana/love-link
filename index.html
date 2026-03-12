@@ -10,7 +10,7 @@
   <title>Love Link</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260310-ux8" />
+  <link rel="stylesheet" href="./styles.css?v=20260313-ux16" />
 </head>
 <body>
   <div class="bg-layer"></div>
@@ -23,14 +23,38 @@
       <button id="menuCloseBtn" class="btn ghost">Close</button>
     </div>
     <nav id="navTabs" class="menu-nav">
-      <button data-tab="home" class="active">Home</button>
-      <button data-tab="songs">Music</button>
-      <button data-tab="game">Game</button>
-      <button data-tab="goals">Goals</button>
-      <button data-tab="dates">Dates</button>
-      <button data-tab="reminders">Reminders</button>
-      <button data-tab="letters">Letters</button>
-      <button data-tab="settings">Settings</button>
+      <button data-tab="home" class="active">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5v8.5a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        Home
+      </button>
+      <button data-tab="songs">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19a3 3 0 1 1 0-6c.4 0 .8.1 1.2.3V6l10-2v4l-8 1.6V18a3 3 0 1 1-3-3z"/></svg>
+        Music
+      </button>
+      <button data-tab="game">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16a2 2 0 0 1 2 2v6a3 3 0 0 1-3 3h-1l-2-3H8l-2 3H5a3 3 0 0 1-3-3v-6a2 2 0 0 1 2-2zm3 5h2v-2h2v-2H9v2H7v2zm9 1a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm3-2a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/></svg>
+        Game
+      </button>
+      <button data-tab="goals">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm10 1v3h3"/><path d="m7 13 2 2 4-4"/></svg>
+        Goals
+      </button>
+      <button data-tab="dates">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2v3M17 2v3M3 9h18M5 5h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
+        Dates
+      </button>
+      <button data-tab="reminders">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 1 7 7v4l2 3H3l2-3V9a7 7 0 0 1 7-7z"/><path d="M9.5 20a2.5 2.5 0 0 0 5 0"/></svg>
+        Reminders
+      </button>
+      <button data-tab="letters">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3z"/><path d="m3 7 9 6 9-6"/></svg>
+        Letters
+      </button>
+      <button data-tab="settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm9 4a7.8 7.8 0 0 0-.1-1l2.1-1.6-2-3.4-2.5 1a8.4 8.4 0 0 0-1.7-1l-.4-2.7h-4l-.4 2.7a8.4 8.4 0 0 0-1.7 1l-2.5-1-2 3.4L3.1 11a7.8 7.8 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a8.4 8.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a8.4 8.4 0 0 0 1.7-1l2.5 1 2-3.4L20.9 13c.1-.3.1-.7.1-1z"/></svg>
+        Settings
+      </button>
     </nav>
   </aside>
 
@@ -69,12 +93,26 @@
           </div>
         </div>
         <div class="top-actions">
+          <div id="selfAvatar" class="mini-avatar avatar-frame" aria-hidden="true"></div>
           <span id="syncBadge" class="badge">Offline</span>
           <button id="installBtn" class="btn ghost hidden">Install</button>
         </div>
       </header>
 
       <section id="home" class="screen active">
+        <article class="liquid-card card profile-card">
+          <div class="profile-top">
+            <div class="profile-avatars">
+              <div id="profileSelfAvatar" class="avatar-frame profile-avatar"></div>
+              <div id="profilePartnerAvatar" class="avatar-frame profile-avatar"></div>
+            </div>
+            <div class="profile-meta">
+              <div id="profileNames" class="profile-names">You + Partner</div>
+              <div id="profileStatus" class="profile-status chip">Offline</div>
+              <div id="profileLastSeen" class="profile-sub">Last seen --</div>
+            </div>
+          </div>
+        </article>
         <article class="hero liquid-card hero-home">
           <div class="hero-topline">
             <span class="chip soft">Private Pair Space</span>
@@ -111,7 +149,7 @@
                 <span id="moodLabel" class="chip">Balanced</span>
               </div>
               <div class="partner-ring" id="partnerRing">
-                <div id="partnerAvatar" class="avatar">P</div>
+                <div id="partnerAvatar" class="avatar avatar-frame">P</div>
               </div>
               <p class="small">Mood Level</p>
               <input id="moodSlider" class="ios-slider" type="range" min="0" max="100" value="55" />
@@ -152,6 +190,16 @@
           <div class="card-head">
             <h2>Ping Pong</h2>
             <span class="chip">Realtime Scores</span>
+          </div>
+          <div class="game-avatars">
+            <div class="avatar-chip">
+              <div id="gameSelfAvatar" class="mini-avatar avatar-frame"></div>
+              <span>You</span>
+            </div>
+            <div class="avatar-chip">
+              <div id="gamePartnerAvatar" class="mini-avatar avatar-frame"></div>
+              <span>Partner</span>
+            </div>
           </div>
           <p class="small"></p>
           <canvas id="miniGame" width="640" height="300" class="game-canvas"></canvas>
@@ -248,63 +296,124 @@
       </section>
 
       <section id="settings" class="screen">
-        <article class="liquid-card card stack">
-          <h2>Settings</h2>
-          <div class="row two">
-            <input id="annivInput" type="date" />
-            <input id="partnerNameInput" placeholder="Partner name" />
-          </div>
-
-          <div class="row three">
-            <label class="ios-toggle"><input id="focusToggle" type="checkbox" /><span></span>Focus</label>
-            <label class="ios-toggle"><input id="hapticToggle" type="checkbox" /><span></span>Haptics</label>
-            <label class="ios-toggle"><input id="soundToggle" type="checkbox" /><span></span>Sound</label>
-          </div>
-          <div class="row two">
-            <label class="ios-toggle"><input id="perfToggle" type="checkbox" /><span></span>Performance Mode</label>
-            <span class="hint">Reduces effects for smoother playback</span>
-          </div>
-
-          <div class="row two">
-            <label class="control">Glass Blur <input id="blurInput" class="ios-slider" type="range" min="8" max="30" step="1" /></label>
-            <label class="control">Motion <input id="motionInput" class="ios-slider" type="range" min="0" max="1" step="0.1" /></label>
-          </div>
-
-          <div class="row two">
-            <label class="control">Corner Radius <input id="radiusInput" class="ios-slider" type="range" min="14" max="32" step="1" /></label>
-            <label class="control">UI Scale <input id="scaleInput" class="ios-slider" type="range" min="0.92" max="1.06" step="0.01" /></label>
-          </div>
-
-          <article class="liquid-card card stack wall-card">
-            <div class="card-head">
-              <h3>Shared Background Wall</h3>
-              <span class="chip"></span>
+        <div class="settings-page">
+          <div class="settings-title">Pair</div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div class="settings-label">Partner Name</div>
+              <input id="partnerNameInput" class="settings-input" placeholder="Partner name" />
             </div>
-            <div class="wall-actions">
+            <div class="settings-row">
+              <div class="settings-label">Anniversary</div>
+              <input id="annivInput" class="settings-input" type="date" />
+            </div>
+          </div>
+
+          <div class="settings-title">Avatar</div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div class="settings-label">Your Avatar</div>
+              <div class="settings-value">
+                <div id="settingsAvatarPreview" class="mini-avatar avatar-frame"></div>
+                <span id="avatarName" class="settings-sub">Nova</span>
+              </div>
+            </div>
+            <div id="avatarPicker" class="avatar-picker"></div>
+          </div>
+
+          <div class="settings-title">Experience</div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div class="settings-label">Focus</div>
+              <label class="ios-toggle"><input id="focusToggle" type="checkbox" /><span></span></label>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">Haptics</div>
+              <label class="ios-toggle"><input id="hapticToggle" type="checkbox" /><span></span></label>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">Sound</div>
+              <label class="ios-toggle"><input id="soundToggle" type="checkbox" /><span></span></label>
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">Performance Mode</div>
+              <label class="ios-toggle"><input id="perfToggle" type="checkbox" /><span></span></label>
+            </div>
+          </div>
+
+          <div class="settings-title">Visuals</div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div class="settings-label">Glass Blur</div>
+              <input id="blurInput" class="ios-slider settings-slider" type="range" min="8" max="30" step="1" />
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">Motion</div>
+              <input id="motionInput" class="ios-slider settings-slider" type="range" min="0" max="1" step="0.1" />
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">Corner Radius</div>
+              <input id="radiusInput" class="ios-slider settings-slider" type="range" min="14" max="32" step="1" />
+            </div>
+            <div class="settings-row">
+              <div class="settings-label">UI Scale</div>
+              <input id="scaleInput" class="ios-slider settings-slider" type="range" min="0.92" max="1.06" step="0.01" />
+            </div>
+          </div>
+
+          <div class="settings-title">Shared Background Wall</div>
+          <div class="settings-group wall-card">
+            <div class="settings-row">
               <input id="wallpaperFileInput" type="file" accept="image/*" class="hidden" />
-              <button id="chooseWallpaperBtn" class="btn ghost">Choose Photo</button>
-              <button id="removeWallpaperBtn" class="btn ghost">Remove Photo</button>
+              <button id="chooseWallpaperBtn" class="settings-btn">Choose Photo</button>
+              <button id="removeWallpaperBtn" class="settings-btn ghost">Remove</button>
             </div>
-            <div class="row two">
-              <label class="control">Background Blur <input id="wallpaperBlurInput" class="ios-slider" type="range" min="0" max="24" step="1" /></label>
-              <label class="control">Dim Overlay <input id="wallpaperDimInput" class="ios-slider" type="range" min="0" max="0.75" step="0.01" /></label>
+            <div class="settings-row">
+              <div class="settings-label">Background Blur</div>
+              <input id="wallpaperBlurInput" class="ios-slider settings-slider" type="range" min="0" max="24" step="1" />
             </div>
-            <button id="applyWallpaperBtn" class="btn primary">Apply To Both</button>
-            <p id="wallpaperStatus" class="hint">No custom wallpaper selected</p>
-          </article>
-
-          <div class="row two">
-            <button id="saveSettingsBtn" class="btn primary">Save Settings</button>
-            <button id="requestNotifBtn" class="btn ghost">Enable Notifications</button>
+            <div class="settings-row">
+              <div class="settings-label">Dim Overlay</div>
+              <input id="wallpaperDimInput" class="ios-slider settings-slider" type="range" min="0" max="0.75" step="0.01" />
+            </div>
+            <div class="settings-row">
+              <button id="applyWallpaperBtn" class="settings-btn primary">Apply To Both</button>
+            </div>
+            <div class="settings-row">
+              <div id="wallpaperStatus" class="settings-sub">No custom wallpaper selected</div>
+            </div>
           </div>
 
-          <div class="row two">
-            <input id="adminCodeInput" placeholder="Admin code" />
-            <button id="adminOpenBtn" class="btn ghost">Open Admin</button>
+          <div class="settings-title">Notifications</div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div class="settings-label">Enable Notifications</div>
+              <button id="requestNotifBtn" class="settings-btn">Allow</button>
+            </div>
           </div>
-          <p class="hint">Default admin code: <code>lovelink-admin</code></p>
-          <button id="logoutBtn" class="btn ghost">Logout</button>
-        </article>
+
+          <div class="settings-title">Admin</div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div class="settings-label">Admin Code</div>
+              <input id="adminCodeInput" class="settings-input" placeholder="Admin code" />
+            </div>
+            <div class="settings-row">
+              <button id="adminOpenBtn" class="settings-btn">Open Admin Panel</button>
+            </div>
+            <div class="settings-row">
+              <div class="settings-sub">Default admin code: <code>lovelink-admin</code></div>
+            </div>
+          </div>
+
+          <div class="settings-title">Account</div>
+          <div class="settings-group">
+            <div class="settings-row">
+              <button id="saveSettingsBtn" class="settings-btn primary">Save Settings</button>
+              <button id="logoutBtn" class="settings-btn ghost">Logout</button>
+            </div>
+          </div>
+        </div>
 
         <article id="adminPanel" class="liquid-card card stack hidden">
           <h2>Admin Panel</h2>
@@ -401,6 +510,7 @@
 
   <div id="signalOverlay" class="signal-overlay hidden">
     <div class="signal-card liquid-card">
+      <div id="signalAvatar" class="signal-avatar avatar-frame"></div>
       <h2 id="signalTitle">Your person misses you</h2>
       <p id="signalBody" class="small">Open Love Link</p>
       <button id="closeSignalBtn" class="btn primary">Open</button>
@@ -418,6 +528,6 @@
   </div>
 
   <div id="toastHost" class="toast-host"></div>
-  <script src="./app.js?v=20260310-ux8"></script>
+  <script src="./app.js?v=20260313-ux16"></script>
 </body>
 </html>
