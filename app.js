@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260313-ux16';
+const APP_VERSION = '20260313-ux18';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -112,6 +112,7 @@ let lastPresenceLogAt = 0;
 let pendingLetterImageData = '';
 let missHoldTimer = 0;
 let missHoldTriggered = false;
+let notifSupportWarned = false;
 
 const els = {
   authScreen: byId('authScreen'), appRoot: byId('appRoot'), roleInput: byId('roleInput'), nameInput: byId('nameInput'),
@@ -151,6 +152,7 @@ const els = {
   monitorList: byId('monitorList'), resetConfirmInput: byId('resetConfirmInput'), hardResetBtn: byId('hardResetBtn'), logoutBtn: byId('logoutBtn'), toastHost: byId('toastHost'), signalOverlay: byId('signalOverlay'),
   signalTitle: byId('signalTitle'), signalBody: byId('signalBody'), closeSignalBtn: byId('closeSignalBtn'), miniGame: byId('miniGame'),
   signalAvatar: byId('signalAvatar'),
+  notifSupportHint: byId('notifSupportHint'),
   letterViewOverlay: byId('letterViewOverlay'), letterViewTitle: byId('letterViewTitle'), letterViewReceipt: byId('letterViewReceipt'), letterViewMedia: byId('letterViewMedia'), letterViewBody: byId('letterViewBody'), closeLetterViewBtn: byId('closeLetterViewBtn'),
   startGameBtn: byId('startGameBtn'), pauseGameBtn: byId('pauseGameBtn'), myBestScore: byId('myBestScore'),
   runScore: byId('runScore'), gameLevel: byId('gameLevel'), gameLives: byId('gameLives'), scoreBoard: byId('scoreBoard')
@@ -177,6 +179,23 @@ function byId(id) { return document.getElementById(id); }
 
 function getAvatarDef(id) {
   return avatarLibrary[id] || avatarLibrary['ava-1'];
+}
+
+function supportsNotifications() {
+  return 'Notification' in window && 'serviceWorker' in navigator;
+}
+
+function updateNotificationUI() {
+  if (!els.requestNotifBtn) return;
+  const supported = supportsNotifications();
+  els.requestNotifBtn.disabled = !supported;
+  if (supported) {
+    els.requestNotifBtn.textContent = state.settings.notifications ? 'Enabled' : 'Allow';
+    if (els.notifSupportHint) els.notifSupportHint.textContent = state.settings.notifications ? 'Notifications are enabled for this device.' : 'Tap Allow to enable notifications.';
+  } else {
+    els.requestNotifBtn.textContent = 'Not Supported';
+    if (els.notifSupportHint) els.notifSupportHint.textContent = 'iOS requires an installed PWA (iOS 16.4+) for web push.';
+  }
 }
 
 function renderAvatarSvg(id) {
@@ -656,11 +675,19 @@ function bindMain() {
   }
 
   els.requestNotifBtn.addEventListener('click', async () => {
-    if (!('Notification' in window)) return toast('Notifications not supported');
+    if (!supportsNotifications()) {
+      if (!notifSupportWarned) {
+        notifSupportWarned = true;
+        toast('Notifications not supported on this device');
+      }
+      updateNotificationUI();
+      return;
+    }
     const p = await Notification.requestPermission();
     state.settings.notifications = p === 'granted';
     saveState(false);
     if (p === 'granted') await enableBackgroundAlerts();
+    updateNotificationUI();
     toast(`Notification: ${p}`);
   });
 
@@ -816,6 +843,7 @@ function paintFromState() {
   applyTheme();
   applyPreferences();
   applyFeatureFlags();
+  updateNotificationUI();
   renderAvatars();
   renderAvatarPicker();
 

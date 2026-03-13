@@ -87,7 +87,7 @@ body {
   min-height: 100dvh;
   max-width: 980px;
   margin: 0 auto;
-  padding: 14px 14px calc(108px + env(safe-area-inset-bottom));
+  padding: calc(14px + env(safe-area-inset-top)) 14px calc(108px + env(safe-area-inset-bottom));
   transform: scale(var(--scale));
   transform-origin: top center;
   transition: transform calc(0.2s * var(--motion)) ease;
@@ -263,7 +263,7 @@ textarea {
 
 .topbar {
   position: sticky;
-  top: 8px;
+  top: calc(8px + env(safe-area-inset-top));
   z-index: 12;
   margin-bottom: 12px;
   padding: 10px 12px;
@@ -886,6 +886,11 @@ textarea {
 
 .settings-btn:active {
   transform: translateY(1px) scale(0.985);
+}
+
+.settings-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .avatar-picker {
