@@ -1,6 +1,6 @@
 ﻿const LS_KEY = 'love-link-state-v5';
 const TAB_KEY = 'love-link-tab-id';
-const APP_VERSION = '20260313-ux18';
+const APP_VERSION = '20260313-ux21';
 const SW_VERSION_KEY = 'love-link-sw-version';
 const FCM_VAPID_KEY = 'BO_M2omP5zeSsaCCUPP4_FdGdei5m260GQy91xbp42g8fWuioaXuKGW2Pf3CEju0fsCdwDtzoYXC55MkUwGZPJ0'; // Set your Firebase Web Push certificate key for background lockscreen alerts
 
@@ -29,7 +29,8 @@ const defaultState = {
   letters: [],
   letterTombstones: {},
   mood: { value: 55 },
-  dailyNote: '',
+  partnerMood: { value: 55 },
+  dailyNote: { text: '', author: '', at: 0 },
   missLog: [],
   pulse: [],
   admin: { logs: [], logFilter: 'all' },
@@ -128,7 +129,7 @@ const els = {
   profileNames: byId('profileNames'), profileStatus: byId('profileStatus'), profileLastSeen: byId('profileLastSeen'),
   gameSelfAvatar: byId('gameSelfAvatar'), gamePartnerAvatar: byId('gamePartnerAvatar'),
   daysTogether: byId('daysTogether'), sinceText: byId('sinceText'), dailyPrompt: byId('dailyPrompt'), savePromptBtn: byId('savePromptBtn'),
-  promptSaved: byId('promptSaved'), pulseList: byId('pulseList'), navTabs: byId('navTabs'), songTitle: byId('songTitle'),
+  promptSaved: byId('promptSaved'), promptAuthor: byId('promptAuthor'), pulseList: byId('pulseList'), navTabs: byId('navTabs'), songTitle: byId('songTitle'),
   songUrl: byId('songUrl'), addSongBtn: byId('addSongBtn'), songsList: byId('songsList'), goalText: byId('goalText'), goalDate: byId('goalDate'),
   addGoalBtn: byId('addGoalBtn'), goalsList: byId('goalsList'), dateTitle: byId('dateTitle'), dateValue: byId('dateValue'),
   addDateBtn: byId('addDateBtn'), datesList: byId('datesList'), calendarTitle: byId('calendarTitle'), calendarGrid: byId('calendarGrid'),
@@ -151,7 +152,8 @@ const els = {
   flagRemindersToggle: byId('flagRemindersToggle'), flagLettersToggle: byId('flagLettersToggle'), flagGameToggle: byId('flagGameToggle'), flagWallToggle: byId('flagWallToggle'), superAdminOut: byId('superAdminOut'),
   monitorList: byId('monitorList'), resetConfirmInput: byId('resetConfirmInput'), hardResetBtn: byId('hardResetBtn'), logoutBtn: byId('logoutBtn'), toastHost: byId('toastHost'), signalOverlay: byId('signalOverlay'),
   signalTitle: byId('signalTitle'), signalBody: byId('signalBody'), closeSignalBtn: byId('closeSignalBtn'), miniGame: byId('miniGame'),
-  signalAvatar: byId('signalAvatar'),
+  signalAvatar: byId('signalAvatar'), signalTimes: byId('signalTimes'),
+  partnerMoodState: byId('partnerMoodState'),
   notifSupportHint: byId('notifSupportHint'),
   letterViewOverlay: byId('letterViewOverlay'), letterViewTitle: byId('letterViewTitle'), letterViewReceipt: byId('letterViewReceipt'), letterViewMedia: byId('letterViewMedia'), letterViewBody: byId('letterViewBody'), closeLetterViewBtn: byId('closeLetterViewBtn'),
   startGameBtn: byId('startGameBtn'), pauseGameBtn: byId('pauseGameBtn'), myBestScore: byId('myBestScore'),
@@ -1171,9 +1173,14 @@ function renderMood() {
   if (els.moodSlider && document.activeElement !== els.moodSlider) els.moodSlider.value = String(m.value);
   els.moodLabel.textContent = m.label;
   els.moodText.textContent = m.text;
-  if (els.homeMoodState) els.homeMoodState.textContent = m.label;
   els.partnerRing.style.background = `conic-gradient(from 0deg, ${m.ring}, var(--accent), ${m.ring})`;
   document.documentElement.style.setProperty('--glow', `${m.ring}99`);
+}
+
+function renderPartnerMood() {
+  const m = moodProfile(state.partnerMood || { value: 55 });
+  if (els.partnerMoodState) els.partnerMoodState.textContent = m.label;
+  if (els.homeMoodState) els.homeMoodState.textContent = m.label;
 }
 
 function sendMiss(strength = 'normal') {
@@ -1214,13 +1221,20 @@ function handleMissQuery() {
 }
 
 function saveDailyPrompt() {
-  state.dailyNote = els.dailyPrompt.value.trim();
+  const text = els.dailyPrompt.value.trim();
+  state.dailyNote = { text, author: state.auth.name || 'You', at: Date.now() };
   state.metrics.saves += 1;
   saveState();
-  emitEvent('note_update', { note: state.dailyNote.slice(0, 40) });
+  emitEvent('note_update', { note: text.slice(0, 40), author: state.dailyNote.author });
   els.promptSaved.textContent = 'Saved';
-  if (els.homeNoteState) els.homeNoteState.textContent = state.dailyNote ? 'Saved' : 'Not saved';
+  if (els.homeNoteState) els.homeNoteState.textContent = text ? 'Saved' : 'Not saved';
   setTimeout(() => { els.promptSaved.textContent = ''; }, 1200);
+}
+
+function normalizeDailyNote(note) {
+  if (!note) return { text: '', author: '', at: 0 };
+  if (typeof note === 'string') return { text: note, author: '', at: 0 };
+  return { text: note.text || '', author: note.author || '', at: Number(note.at || 0) };
 }
 
 function renderHomeBits() {
@@ -1233,8 +1247,15 @@ function renderHomeBits() {
     els.daysTogether.textContent = '0';
     els.sinceText.textContent = 'Set anniversary in Settings';
   }
-  if (els.homeNoteState) els.homeNoteState.textContent = state.dailyNote ? 'Saved' : 'Not saved';
+  const note = normalizeDailyNote(state.dailyNote);
+  const noteText = note.text;
+  const noteAuthor = note.author;
+  if (els.homeNoteState) els.homeNoteState.textContent = noteText ? 'Saved' : 'Not saved';
+  if (els.promptAuthor) {
+    els.promptAuthor.textContent = noteAuthor ? `Saved by ${noteAuthor}` : '';
+  }
   renderMood();
+  renderPartnerMood();
   updatePresenceUI();
 }
 
@@ -1576,25 +1597,39 @@ function checkRemindersDue() {
   const nowKey = `${hh}:${mm}`;
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   let changed = false;
+  const dueAlerts = [];
 
   for (const r of state.reminders) {
     if (!r.enabled || !r.time) continue;
     if (!reminderAppliesToday(r, now)) continue;
     const dueByTime = r.time === nowKey;
     const dueBySnooze = Number(r.snoozedUntil || 0) > 0 && Date.now() >= Number(r.snoozedUntil || 0);
-    if (!dueByTime && !dueBySnooze) continue;
+    const [rh, rm] = String(r.time).split(':').map((v) => Number(v || 0));
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const remMins = rh * 60 + rm;
+    const lateWindow = 180; // minutes
+    const dueByCatchUp = nowMins >= remMins && nowMins - remMins <= lateWindow;
+    if (!dueByTime && !dueBySnooze && !dueByCatchUp) continue;
     if (r.lastFiredOn === todayKey) continue;
 
     const isOwn = (r.senderUid && r.senderUid === syncRuntime.authUid) || (r.senderName && r.senderName === state.auth.name);
     if (!isOwn) {
-      showSignalOverlay(`Reminder: ${r.title}`, `Scheduled for ${formatReminderTime(r.time)}`, state.auth.partnerAvatarId);
-      pushDeviceAlert(`Reminder: ${r.title}`, `From ${r.senderName || 'your partner'} at ${formatReminderTime(r.time)}`);
-      maybeVibrate([25, 45, 25]);
+      dueAlerts.push({
+        text: `Reminder: ${r.title} · ${formatReminderTime(r.time)}`
+      });
     }
 
     r.lastFiredOn = todayKey;
     if (dueBySnooze) r.snoozedUntil = 0;
     changed = true;
+  }
+
+  if (dueAlerts.length) {
+    const who = syncRuntime.partnerLiveName || state.auth.partnerName || 'Partner';
+    showSignalOverlay('Reminders', `${dueAlerts.length} reminder${dueAlerts.length > 1 ? 's' : ''} due`, state.auth.partnerAvatarId, dueAlerts, 'Reminder');
+    pushDeviceAlert('Reminders', `${dueAlerts.length} reminder${dueAlerts.length > 1 ? 's' : ''} due`);
+    maybeVibrate([30, 50, 30, 50]);
+    maybeBeep();
   }
 
   if (changed) {
@@ -2311,7 +2346,7 @@ function applyRemoteState(data) {
   state.reminders = data.reminders || state.reminders;
   state.wallpaper = data.wallpaper || state.wallpaper;
   state.letters = (data.letters || state.letters).filter((l) => !state.letterTombstones[l.id]);
-  state.mood = data.mood || state.mood;
+  state.partnerMood = data.mood || state.partnerMood;
   state.dailyNote = data.dailyNote ?? state.dailyNote;
   state.missLog = data.missLog || state.missLog;
   state.game = data.game || state.game;
@@ -2321,9 +2356,14 @@ function applyRemoteState(data) {
   state.auth.partnerAvatarId = data.auth?.avatarId ?? state.auth.partnerAvatarId;
 
   saveState(false);
+  maybeShowMissSummary(state.missLog);
 
   renderHomeBits();
-  if (document.activeElement !== els.dailyPrompt) els.dailyPrompt.value = state.dailyNote || '';
+  const note = normalizeDailyNote(state.dailyNote);
+  const noteText = note.text;
+  const noteAuthor = note.author;
+  if (document.activeElement !== els.dailyPrompt) els.dailyPrompt.value = noteText;
+  if (els.promptAuthor) els.promptAuthor.textContent = noteAuthor ? `Saved by ${noteAuthor}` : '';
   renderSongs();
   renderGoals();
   renderDates();
@@ -2431,7 +2471,7 @@ function handleRemoteEvent(ev) {
     saveState(false);
     const strong = ev.payload?.strength === 'strong';
     els.missStatus.textContent = strong ? `${who} sent a strong signal` : `${who} sent a miss signal`;
-    showSignalOverlay(`${who} misses you`, strong ? 'Strong signal received' : 'Live signal received', ev.payload?.avatarId || state.auth.partnerAvatarId);
+    showSignalOverlay(`${who} misses you`, strong ? 'Strong signal received' : 'Live signal received', ev.payload?.avatarId || state.auth.partnerAvatarId, [ts]);
     pushDeviceAlert(`${who} misses you`, 'Live signal received');
     maybeVibrate(strong ? [40, 80, 40, 80] : [30, 55, 30]);
     maybeBeep();
@@ -2544,12 +2584,48 @@ function loadScript(src) {
   });
 }
 
-function showSignalOverlay(title, body, avatarId = '') {
+function showSignalOverlay(title, body, avatarId = '', times = [], label = 'Missed at') {
   els.signalTitle.textContent = title;
   els.signalBody.textContent = body;
   const useId = avatarId || state.auth.partnerAvatarId || state.profile?.avatarId || 'ava-1';
   setAvatar(els.signalAvatar, useId);
+  renderSignalTimes(times, label);
   els.signalOverlay.classList.remove('hidden');
+}
+
+function renderSignalTimes(times = [], label = 'Missed at') {
+  if (!els.signalTimes) return;
+  if (!times.length) {
+    els.signalTimes.innerHTML = '';
+    return;
+  }
+  const list = times.slice(-5).map((t) => {
+    if (t && typeof t === 'object' && t.text) {
+      return `<div class="signal-time">${escapeHtml(t.text)}</div>`;
+    }
+    const dt = new Date(t);
+    const timeLabel = Number.isFinite(dt.getTime())
+      ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : String(t);
+    return `<div class="signal-time">${escapeHtml(label)} ${escapeHtml(timeLabel)}</div>`;
+  }).join('');
+  els.signalTimes.innerHTML = list;
+}
+
+function maybeShowMissSummary(missLog = []) {
+  if (!Array.isArray(missLog) || !missLog.length) return;
+  const cutoff = Number(state.sync.lastNotifiedMissAt || 0);
+  const times = missLog
+    .map((t) => new Date(t).getTime())
+    .filter((t) => Number.isFinite(t) && t > cutoff)
+    .sort((a, b) => a - b);
+  if (!times.length) return;
+  const lastTs = times[times.length - 1];
+  state.sync.lastNotifiedMissAt = lastTs;
+  saveState(false);
+  const who = syncRuntime.partnerLiveName || state.auth.partnerName || 'Partner';
+  const subtitle = times.length > 1 ? `Missed you ${times.length} times` : 'Missed you';
+  showSignalOverlay(`${who} missed you`, subtitle, state.auth.partnerAvatarId, times);
 }
 
 async function pushDeviceAlert(title, body) {

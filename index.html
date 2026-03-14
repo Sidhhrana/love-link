@@ -10,7 +10,7 @@
   <title>Love Link</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=20260313-ux18" />
+  <link rel="stylesheet" href="./styles.css?v=20260313-ux21" />
 </head>
 <body>
   <div class="bg-layer"></div>
@@ -154,6 +154,10 @@
               <p class="small">Mood Level</p>
               <input id="moodSlider" class="ios-slider" type="range" min="0" max="100" value="55" />
               <p id="moodText" class="small">Balanced and warm</p>
+              <div class="partner-mood">
+                <span class="small">Partner Mood</span>
+                <strong id="partnerMoodState">Balanced</strong>
+              </div>
             </article>
 
             <article class="liquid-card card">
@@ -168,6 +172,7 @@
               <input id="dailyPrompt" placeholder="A note for your partner" maxlength="140" />
               <button id="savePromptBtn" class="btn primary">Save Note</button>
               <p id="promptSaved" class="hint"></p>
+              <p id="promptAuthor" class="small"></p>
             </article>
           </div>
         </section>
@@ -516,6 +521,7 @@
       <div id="signalAvatar" class="signal-avatar avatar-frame"></div>
       <h2 id="signalTitle">Your person misses you</h2>
       <p id="signalBody" class="small">Open Love Link</p>
+      <div id="signalTimes" class="signal-times"></div>
       <button id="closeSignalBtn" class="btn primary">Open</button>
     </div>
   </div>
@@ -531,6 +537,6 @@
   </div>
 
   <div id="toastHost" class="toast-host"></div>
-  <script src="./app.js?v=20260313-ux18"></script>
+  <script src="./app.js?v=20260313-ux21"></script>
 </body>
 </html>
